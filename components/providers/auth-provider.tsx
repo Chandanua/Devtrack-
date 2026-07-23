@@ -1,112 +1,117 @@
 'use client';
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  useCallback,
-  useRef,
-  type ReactNode,
-} from 'react';
-import type { Session, User } from '@supabase/supabase-js';
-import { createBrowserClient } from '@/lib/supabase/client';
-import type { Profile } from '@/lib/types/database';
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 
-interface AuthContextValue {
-  session: Session | null;
-  user: User | null;
+interface Profile {
+  id: string;
+  email: string;
+  full_name: string;
+  avatar_url: string | null;
+  role: string;
+  job_title: string | null;
+  availability: string;
+  created_at: string;
+}
+
+interface AuthContextType {
+  user: { id: string; email: string } | null;
   profile: Profile | null;
   loading: boolean;
+  signIn: (email: string, password: string) => Promise<{ error?: string }>;
+  signUp: (email: string, password: string, full_name: string, role?: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextValue>({
-  session: null,
+const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
   loading: true,
+  signIn: async () => ({}),
+  signUp: async () => ({}),
   signOut: async () => {},
   refreshProfile: async () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const supabase = createBrowserClient();
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const [user, setUser] = useState<{ id: string; email: string } | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const mounted = useRef(true);
-
-  const fetchProfile = useCallback(async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
-    if (error) return;
-    if (mounted.current) setProfile(data as Profile | null);
-  }, [supabase]);
 
   const refreshProfile = useCallback(async () => {
-    if (user?.id) await fetchProfile(user.id);
-  }, [user?.id, fetchProfile]);
+    try {
+      const res = await fetch('/api/auth/me');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          setUser({ id: data.user.id, email: data.user.email });
+          setProfile(data.user);
+          return;
+        }
+      }
+      setUser(null);
+      setProfile(null);
+    } catch {
+      setUser(null);
+      setProfile(null);
+    }
+  }, []);
 
   useEffect(() => {
-    mounted.current = true;
+    refreshProfile().finally(() => setLoading(false));
+  }, [refreshProfile]);
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted.current) return;
-      setSession(data.session);
-      setUser(data.session?.user ?? null);
-      if (data.session?.user) {
-        fetchProfile(data.session.user.id).finally(() => {
-          if (mounted.current) setLoading(false);
-        });
-      } else {
-        setLoading(false);
-      }
-    });
+  const signIn = async (email: string, password: string) => {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { error: data.error || 'Login failed' };
+      setUser({ id: data.user.id, email: data.user.email });
+      setProfile(data.user);
+      router.push('/dashboard');
+      return {};
+    } catch {
+      return { error: 'Network error' };
+    }
+  };
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      (_event, newSession) => {
-        if (!mounted.current) return;
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
-        (async () => {
-          if (newSession?.user) {
-            await fetchProfile(newSession.user.id);
-          } else {
-            setProfile(null);
-          }
-          if (mounted.current) setLoading(false);
-        })();
-      }
-    );
+  const signUp = async (email: string, password: string, full_name: string, role?: string) => {
+    try {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, full_name, role }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { error: data.error || 'Signup failed' };
+      setUser({ id: data.user.id, email: data.user.email });
+      setProfile(data.user);
+      router.push('/settings');
+      return {};
+    } catch {
+      return { error: 'Network error' };
+    }
+  };
 
-    return () => {
-      mounted.current = false;
-      authListener.subscription.unsubscribe();
-    };
-  }, [supabase, fetchProfile]);
-
-  const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
-    setProfile(null);
-    setSession(null);
+  const signOut = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
     setUser(null);
-  }, [supabase]);
+    setProfile(null);
+    router.push('/login');
+  };
 
   return (
-    <AuthContext.Provider
-      value={{ session, user, profile, loading, signOut, refreshProfile }}
-    >
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export function useAuth() {
-  return useContext(AuthContext);
-}
+export const useAuth = () => useContext(AuthContext);

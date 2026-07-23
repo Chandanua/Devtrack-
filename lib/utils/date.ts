@@ -21,13 +21,14 @@ export function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-export function isOverdue(dueDate: string | null): boolean {
+export function isOverdue(dueDate: string | Date | null | undefined): boolean {
   if (!dueDate) return false;
-  const due = new Date(dueDate);
+  const due = typeof dueDate === 'string' ? new Date(dueDate) : dueDate;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  due.setHours(0, 0, 0, 0);
-  return due < today;
+  const dueCopy = new Date(due.getTime());
+  dueCopy.setHours(0, 0, 0, 0);
+  return dueCopy < today;
 }
 
 export function isDueSoon(dueDate: string | null, hours = 48): boolean {

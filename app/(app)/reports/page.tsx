@@ -1,136 +1,109 @@
 'use client';
-
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { TrendingUp, CheckCircle2, Clock, AlertTriangle, FolderKanban } from 'lucide-react';
-import { createBrowserClient } from '@/lib/supabase/client';
-import type { Task, TaskStatus, Project, Profile } from '@/lib/types/database';
-import { TASK_STATUSES, TASK_STATUS_META } from '@/lib/constants';
-import { cn } from '@/lib/utils';
+import { BarChart3, PieChart, TrendingUp, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
+import type { TaskWithRelations } from '@/lib/types/database';
+import { TASK_STATUSES, TASK_STATUS_META, TASK_PRIORITIES, TASK_PRIORITY_META } from '@/lib/constants';
 import { isOverdue } from '@/lib/utils/date';
 import { Card } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatCard } from '@/components/shared/stat-card';
 import { PageHeader } from '@/components/shared/page-header';
-import { EmptyState } from '@/components/shared/empty-state';
-
-const STATUS_COLORS: Record<TaskStatus, string> = {
-  backlog: '#94a3b8', todo: '#3b82f6', in_progress: '#8b5cf6', code_review: '#06b6d4', testing: '#f59e0b', blocked: '#ef4444', completed: '#10b981',
-};
+import { cn } from '@/lib/utils';
 
 export default function ReportsPage() {
-  const supabase = createBrowserClient();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [members, setMembers] = useState<Profile[]>([]);
+  const [tasks, setTasks] = useState<TaskWithRelations[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [projectFilter, setProjectFilter] = useState<string>('all');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [{ data: taskData }, { data: projData }, { data: memberData }] = await Promise.all([
-      supabase.from('tasks').select('*, project:projects(*), assignees:task_assignees(user:profiles(*))').is('parent_task_id', null),
-      supabase.from('projects').select('*').order('name'),
-      supabase.from('profiles').select('*'),
-    ]);
-    setTasks((taskData as unknown as Task[]) ?? []);
-    setProjects((projData as Project[]) ?? []);
-    setMembers((memberData as Profile[]) ?? []);
+    const [tRes, pRes] = await Promise.all([fetch('/api/tasks?parentOnly=true'), fetch('/api/projects')]);
+    if (tRes.ok) setTasks(await tRes.json());
+    if (pRes.ok) setProjects(await pRes.json());
     setLoading(false);
-  }, [supabase]);
+  }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const filteredTasks = useMemo(() => tasks.filter((t) => projectFilter === 'all' || t.project_id === projectFilter), [tasks, projectFilter]);
+  const stats = useMemo(() => {
+    const total = tasks.length;
+    const completed = tasks.filter((t) => t.status === 'completed').length;
+    const overdue = tasks.filter((t) => isOverdue(t.due_date) && t.status !== 'completed').length;
+    const byStatus = TASK_STATUSES.reduce((m, s) => { m[s] = tasks.filter((t) => t.status === s).length; return m; }, {} as Record<string, number>);
+    const byPriority = TASK_PRIORITIES.reduce((m, p) => { m[p] = tasks.filter((t) => t.priority === p).length; return m; }, {} as Record<string, number>);
+    const completion = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return { total, completed, overdue, byStatus, byPriority, completion };
+  }, [tasks]);
 
-  const stats = useMemo(() => ({
-    total: filteredTasks.length,
-    completed: filteredTasks.filter((t) => t.status === 'completed').length,
-    inProgress: filteredTasks.filter((t) => t.status === 'in_progress').length,
-    overdue: filteredTasks.filter((t) => isOverdue(t.due_date) && t.status !== 'completed').length,
-  }), [filteredTasks]);
+  if (loading) return <div className="p-4 md:p-6 lg:p-8"><Skeleton className="mb-6 h-8 w-48" /><div className="grid gap-4 sm:grid-cols-4 mb-6">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28" />)}</div></div>;
 
-  const completionRate = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
-
-  const statusData = useMemo(() => TASK_STATUSES.map((s) => ({ name: TASK_STATUS_META[s].label, value: filteredTasks.filter((t) => t.status === s).length, status: s })).filter((d) => d.value > 0), [filteredTasks]);
-
-  const workloadData = useMemo(() => {
-    return members.map((m) => {
-      const memberTasks = filteredTasks.filter((t) => t.assignees?.some((a) => a.id === m.id));
-      return { name: m.full_name.split(' ')[0], total: memberTasks.length, completed: memberTasks.filter((t) => t.status === 'completed').length };
-    }).filter((d) => d.total > 0).sort((a, b) => b.total - a.total).slice(0, 10);
-  }, [filteredTasks, members]);
-
-  const projectProgress = useMemo(() => projects.map((p) => ({
-    name: p.name.length > 15 ? p.name.slice(0, 15) + '...' : p.name,
-    progress: p.progress,
-    tasks: filteredTasks.filter((t) => t.project_id === p.id).length,
-  })).slice(0, 8), [projects, filteredTasks]);
-
-  if (loading) return <div className="p-4 md:p-6 lg:p-8"><Skeleton className="mb-6 h-8 w-48" /><div className="mb-6 grid gap-4 sm:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28" />)}</div><Skeleton className="h-96" /></div>;
+  const maxStatusCount = Math.max(...Object.values(stats.byStatus), 1);
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
-      <PageHeader title="Reports & Analytics" description="Track team performance, project progress, and task metrics."
-        actions={<Select value={projectFilter} onValueChange={setProjectFilter}><SelectTrigger className="w-48"><SelectValue placeholder="All projects" /></SelectTrigger><SelectContent><SelectItem value="all">All projects</SelectItem>{projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>} />
+      <PageHeader title="Reports" description="Analytics and insights across all your projects." />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={FolderKanban} label="Total tasks" value={stats.total} />
-        <StatCard icon={CheckCircle2} label="Completion rate" value={`${completionRate}%`} accent="text-success" />
-        <StatCard icon={Clock} label="In progress" value={stats.inProgress} accent="text-info" />
+        <StatCard icon={BarChart3} label="Total tasks" value={stats.total} />
+        <StatCard icon={CheckCircle2} label="Completion rate" value={`${stats.completion}%`} accent="text-success" />
         <StatCard icon={AlertTriangle} label="Overdue" value={stats.overdue} accent="text-destructive" />
+        <StatCard icon={TrendingUp} label="Active projects" value={projects.filter((p: any) => p.status === 'active').length} accent="text-info" />
       </div>
 
-      {filteredTasks.length === 0 ? (
-        <EmptyState icon={TrendingUp} title="No data to report" description="Create tasks and projects to see analytics here." />
-      ) : (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card className="p-5">
-            <h3 className="mb-4 text-sm font-semibold">Task status distribution</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({ name, value }) => `${name}: ${value}`} labelLine={false} style={{ fontSize: 11 }}>
-                  {statusData.map((entry) => <Cell key={entry.status} fill={STATUS_COLORS[entry.status as TaskStatus]} />)}
-                </Pie>
-                <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))' }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="p-5">
+          <h3 className="mb-4 text-sm font-semibold flex items-center gap-2"><BarChart3 className="h-4 w-4" />Tasks by status</h3>
+          <div className="space-y-3">
+            {TASK_STATUSES.map((s) => {
+              const count = stats.byStatus[s] ?? 0;
+              const pct = maxStatusCount > 0 ? (count / maxStatusCount) * 100 : 0;
+              const meta = TASK_STATUS_META[s];
+              return (
+                <div key={s}>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2"><span className={cn('h-2.5 w-2.5 rounded-full', meta.dotClass)} />{meta.label}</div>
+                    <span className="font-medium">{count}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-muted"><div className={cn('h-full rounded-full transition-all', meta.dotClass)} style={{ width: `${pct}%` }} /></div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
 
-          <Card className="p-5">
-            <h3 className="mb-4 text-sm font-semibold">Team workload</h3>
-            {workloadData.length === 0 ? <p className="py-12 text-center text-sm text-muted-foreground">No assigned tasks</p> : (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={workloadData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                  <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))' }} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="total" name="Total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="completed" name="Completed" fill="#10b981" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </Card>
+        <Card className="p-5">
+          <h3 className="mb-4 text-sm font-semibold flex items-center gap-2"><PieChart className="h-4 w-4" />Tasks by priority</h3>
+          <div className="grid grid-cols-2 gap-4">
+            {TASK_PRIORITIES.map((p) => {
+              const count = stats.byPriority[p] ?? 0;
+              const meta = TASK_PRIORITY_META[p];
+              const pct = stats.total > 0 ? Math.round((count / stats.total) * 100) : 0;
+              return (
+                <div key={p} className="rounded-xl border p-4 text-center">
+                  <p className="text-2xl font-bold">{count}</p>
+                  <p className="text-xs text-muted-foreground">{meta.label} ({pct}%)</p>
+                  <div className="mx-auto mt-2 h-1.5 w-full max-w-[80px] overflow-hidden rounded-full bg-muted"><div className={cn('h-full rounded-full', meta.dotClass)} style={{ width: `${pct}%` }} /></div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
 
-          <Card className="p-5 lg:col-span-2">
-            <h3 className="mb-4 text-sm font-semibold">Project progress</h3>
-            {projectProgress.length === 0 ? <p className="py-12 text-center text-sm text-muted-foreground">No projects yet</p> : (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={projectProgress} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={100} />
-                  <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))' }} />
-                  <Bar dataKey="progress" name="Progress %" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </Card>
-        </div>
-      )}
+        <Card className="p-5 lg:col-span-2">
+          <h3 className="mb-4 text-sm font-semibold">Project progress</h3>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {projects.map((p: any) => (
+              <div key={p.id} className="rounded-lg border p-4">
+                <p className="truncate text-sm font-medium">{p.name}</p>
+                <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{p.status}</span><span className="font-medium text-foreground">{p.progress}%</span>
+                </div>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${p.progress}%` }} /></div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

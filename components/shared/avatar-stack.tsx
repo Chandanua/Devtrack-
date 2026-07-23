@@ -8,12 +8,12 @@ import type { Profile } from '@/lib/types/database';
 interface AvatarStackProps {
   users: Pick<Profile, 'id' | 'full_name' | 'avatar_url'>[];
   max?: number;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
   className?: string;
 }
 
-const sizeMap = { sm: 'h-6 w-6', md: 'h-8 w-8', lg: 'h-10 w-10' };
-const textSizeMap = { sm: 'text-[10px]', md: 'text-xs', lg: 'text-sm' };
+const sizeMap = { xs: 'h-5 w-5', sm: 'h-6 w-6', md: 'h-8 w-8', lg: 'h-10 w-10' };
+const textSizeMap = { xs: 'text-[8px]', sm: 'text-[10px]', md: 'text-xs', lg: 'text-sm' };
 
 export function AvatarStack({ users, max = 4, size = 'sm', className }: AvatarStackProps) {
   const visible = users.slice(0, max);
@@ -39,7 +39,7 @@ export function AvatarStack({ users, max = 4, size = 'sm', className }: AvatarSt
   );
 }
 
-export function SingleAvatar({ user, size = 'md', className }: { user: Pick<Profile, 'id' | 'full_name' | 'avatar_url'>; size?: 'sm' | 'md' | 'lg'; className?: string }) {
+export function SingleAvatar({ user, size = 'md', className }: { user: Pick<Profile, 'id' | 'full_name' | 'avatar_url'>; size?: 'xs' | 'sm' | 'md' | 'lg'; className?: string }) {
   return (
     <Avatar className={cn(sizeMap[size], className)}>
       <AvatarImage src={user.avatar_url ?? undefined} alt={user.full_name} />

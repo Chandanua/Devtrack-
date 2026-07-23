@@ -1,102 +1,94 @@
 'use client';
-
-import { useState, useEffect } from 'react';
-import { User, Mail, Save } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { motion } from 'framer-motion';
+import { Settings, User, Save, Loader2 } from 'lucide-react';
 import { useAuth } from '@/components/providers/auth-provider';
-import { createBrowserClient } from '@/lib/supabase/client';
-import { ROLE_LABELS } from '@/lib/constants';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+import { ROLE_LABELS_MAP } from '@/lib/constants';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import { PageHeader } from '@/components/shared/page-header';
 import { toast } from 'sonner';
-import { initials, avatarGradient } from '@/lib/constants';
+
 export default function SettingsPage() {
   const { profile, refreshProfile } = useAuth();
-  const supabase = createBrowserClient();
   const [fullName, setFullName] = useState('');
   const [jobTitle, setJobTitle] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (profile) {
-      setFullName(profile.full_name);
+      setFullName(profile.full_name ?? '');
       setJobTitle(profile.job_title ?? '');
-      setAvatarUrl(profile.avatar_url ?? '');
     }
   }, [profile]);
 
   async function handleSave() {
-    if (!profile) return;
-    if (!fullName.trim()) { toast.error('Name cannot be empty'); return; }
-    if (avatarUrl && !/^https?:\/\/.+/.test(avatarUrl)) { toast.error('Avatar URL must start with http:// or https://'); return; }
     setSaving(true);
-    const { error } = await supabase.from('profiles').update({
-      full_name: fullName.trim(),
-      job_title: jobTitle.trim() || null,
-      avatar_url: avatarUrl || null,
-    }).eq('id', profile.id);
-    if (error) { toast.error(error.message); setSaving(false); return; }
-    await refreshProfile();
-    toast.success('Profile updated');
+    const res = await fetch('/api/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ full_name: fullName, job_title: jobTitle }),
+    });
+    if (res.ok) {
+      await refreshProfile();
+      toast.success('Profile updated');
+    } else {
+      toast.error('Failed to update profile');
+    }
     setSaving(false);
   }
 
-  if (!profile) return (
-    <div className="flex min-h-[60vh] items-center justify-center">
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <span className="text-sm">Loading settings…</span>
-      </div>
-    </div>
-  );
-
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-3xl">
-      <PageHeader title="Settings" description="Manage your profile and preferences." />
+    <div className="p-4 md:p-6 lg:p-8">
+      <PageHeader title="Settings" description="Manage your account and preferences." />
 
-      <Card className="mb-6 p-6">
-        <div className="flex items-center gap-4">
-          <Avatar className="h-20 w-20">
-            <AvatarImage src={avatarUrl || undefined} alt={fullName} />
-            <AvatarFallback className={cn('bg-gradient-to-br text-2xl font-bold text-white', avatarGradient(profile.id))}>{initials(fullName)}</AvatarFallback>
-          </Avatar>
-          <div>
-            <h2 className="text-lg font-semibold">{profile.full_name}</h2>
-            <p className="text-sm text-muted-foreground">{profile.email}</p>
-            <span className="mt-1 inline-block rounded-md bg-muted px-2 py-0.5 text-xs font-medium">{ROLE_LABELS[profile.role]}</span>
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+        <Card className="max-w-2xl p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10"><User className="h-6 w-6 text-primary" /></div>
+            <div>
+              <h2 className="font-semibold">Profile information</h2>
+              <p className="text-sm text-muted-foreground">Update your personal details</p>
+            </div>
           </div>
-        </div>
-      </Card>
 
-      <Card className="mb-6 p-6">
-        <div className="mb-4 flex items-center gap-2">
-          <User className="h-4 w-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold">Profile information</h3>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div><Label htmlFor="fullName">Full name</Label><Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} className="mt-1" /></div>
-          <div><Label htmlFor="jobTitle">Job title</Label><Input id="jobTitle" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} className="mt-1" /></div>
-          <div className="sm:col-span-2"><Label htmlFor="avatarUrl">Avatar URL</Label><Input id="avatarUrl" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} placeholder="https://..." className="mt-1" /></div>
-        </div>
-        <div className="mt-4 flex justify-end"><Button onClick={handleSave} disabled={saving} className="gap-2"><Save className="h-4 w-4" />{saving ? 'Saving...' : 'Save changes'}</Button></div>
-      </Card>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" value={profile?.email ?? ''} disabled className="mt-1 bg-muted/50" />
+              <p className="mt-1 text-xs text-muted-foreground">Email cannot be changed</p>
+            </div>
 
-      <Card className="p-6">
-        <div className="mb-4 flex items-center gap-2">
-          <Mail className="h-4 w-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold">Account</h3>
-        </div>
-        <div className="space-y-3 text-sm">
-          <div className="flex items-center justify-between"><span className="text-muted-foreground">Email</span><span className="font-medium">{profile.email}</span></div>
-          <div className="flex items-center justify-between"><span className="text-muted-foreground">Role</span><span className="font-medium">{ROLE_LABELS[profile.role]}</span></div>
-          <div className="flex items-center justify-between"><span className="text-muted-foreground">Member since</span><span className="font-medium">{new Date(profile.created_at).toLocaleDateString('en', { year: 'numeric', month: 'long', day: 'numeric' })}</span></div>
-        </div>
-      </Card>
+            <div>
+              <Label htmlFor="fullName">Full name</Label>
+              <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} className="mt-1" />
+            </div>
+
+            <div>
+              <Label htmlFor="jobTitle">Job title</Label>
+              <Input id="jobTitle" placeholder="e.g., Senior Developer" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} className="mt-1" />
+            </div>
+
+            <div>
+              <Label>Role</Label>
+              <div className="mt-1"><Badge variant="secondary">{ROLE_LABELS_MAP[profile?.role ?? ''] ?? 'Unknown'}</Badge></div>
+              <p className="mt-1 text-xs text-muted-foreground">Contact an admin to change your role</p>
+            </div>
+          </div>
+
+          <Separator className="my-6" />
+
+          <div className="flex justify-end">
+            <Button onClick={handleSave} disabled={saving} className="gap-2">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Save changes
+            </Button>
+          </div>
+        </Card>
+      </motion.div>
     </div>
   );
 }

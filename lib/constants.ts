@@ -227,3 +227,14 @@ export function avatarGradient(seed: string): string {
   }
   return gradients[Math.abs(hash) % gradients.length];
 }
+
+// String-keyed map for contexts where we don't want to import Prisma types
+export const ROLE_LABELS_MAP: Record<string, string> = {
+  super_admin: 'Super Admin',
+  project_manager: 'Project Manager',
+  team_lead: 'Team Lead',
+  developer: 'Developer',
+  qa_tester: 'QA Tester',
+  designer: 'UI/UX Designer',
+};
+

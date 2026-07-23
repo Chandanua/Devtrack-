@@ -7,23 +7,16 @@ import { KanbanSquare, Loader2 } from 'lucide-react';
 
 export function RouteGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { loading, session, profile } = useAuth();
+  const { loading, user } = useAuth();
 
   useEffect(() => {
     if (loading) return;
-    if (!session) {
+    if (!user) {
       router.replace('/login');
-      return;
     }
-    if (session && !profile) {
-      const timer = setTimeout(() => {
-        router.replace('/settings');
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [loading, session, profile, router]);
+  }, [loading, user, router]);
 
-  if (loading || !session) {
+  if (loading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-4">

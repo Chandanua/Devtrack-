@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/providers/auth-provider';
-import { ROLE_LABELS } from '@/lib/constants';
+import { ROLE_LABELS_MAP } from '@/lib/constants';
 import { isManagerOrAbove } from '@/lib/auth/roles';
 import { UserMenu } from '@/components/layout/user-menu';
 
@@ -89,7 +89,7 @@ export function Sidebar({ onItemClick }: { onItemClick?: () => void }) {
         {profile && (
           <div className="mb-3 px-2">
             <span className="text-xs font-medium uppercase tracking-wide text-sidebar-muted-foreground">
-              {ROLE_LABELS[profile.role]}
+              {ROLE_LABELS_MAP[profile.role]}
             </span>
           </div>
         )}

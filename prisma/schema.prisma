@@ -1,0 +1,358 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ──────────────────────────────────────────────
+
+enum UserRole {
+  super_admin
+  project_manager
+  team_lead
+  developer
+  qa_tester
+  designer
+}
+
+enum UserAvailability {
+  available
+  busy
+  away
+  offline
+}
+
+enum ProjectStatus {
+  planning
+  active
+  on_hold
+  completed
+}
+
+enum TaskStatus {
+  backlog
+  todo
+  in_progress
+  code_review
+  testing
+  blocked
+  completed
+}
+
+enum TaskPriority {
+  critical
+  high
+  medium
+  low
+}
+
+enum SprintStatus {
+  planning
+  active
+  completed
+}
+
+enum NotificationType {
+  task_assigned
+  due_reminder
+  deadline_approaching
+  task_overdue
+  comment_mention
+  status_change
+  priority_update
+  project_announcement
+}
+
+// ─── Models ─────────────────────────────────────────────
+
+model Profile {
+  id             String           @id @default(uuid()) @db.Uuid
+  email          String           @unique
+  password_hash  String
+  full_name      String
+  avatar_url     String?
+  role           UserRole         @default(developer)
+  job_title      String?
+  availability   UserAvailability @default(available)
+  created_at     DateTime         @default(now())
+  updated_at     DateTime         @updatedAt
+
+  // Relations
+  team_members     TeamMember[]
+  created_projects Project[]        @relation("ProjectCreator")
+  created_tasks    Task[]           @relation("TaskCreator")
+  task_assignees   TaskAssignee[]
+  comments         Comment[]
+  time_logs        TimeLog[]
+  notifications    Notification[]
+  activity_logs    ActivityLog[]
+  attachments      TaskAttachment[]
+  comment_reactions CommentReaction[]
+
+  @@map("profiles")
+}
+
+model Team {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  created_by  String   @db.Uuid
+  created_at  DateTime @default(now())
+
+  // Relations
+  members  TeamMember[]
+  projects Project[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id               String   @id @default(uuid()) @db.Uuid
+  team_id          String   @db.Uuid
+  user_id          String   @db.Uuid
+  role_within_team String   @default("member") // 'lead' | 'member'
+  created_at       DateTime @default(now())
+
+  // Relations
+  team    Team    @relation(fields: [team_id], references: [id], onDelete: Cascade)
+  profile Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([team_id, user_id])
+  @@map("team_members")
+}
+
+model Project {
+  id             String        @id @default(uuid()) @db.Uuid
+  name           String
+  description    String?
+  client_name    String?
+  client_contact String?
+  status         ProjectStatus @default(planning)
+  start_date     DateTime?
+  end_date       DateTime?
+  team_id        String?       @db.Uuid
+  created_by     String        @db.Uuid
+  progress       Int           @default(0)
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+
+  // Relations
+  team    Team?    @relation(fields: [team_id], references: [id], onDelete: SetNull)
+  creator Profile  @relation("ProjectCreator", fields: [created_by], references: [id])
+  tasks   Task[]
+  sprints Sprint[]
+
+  @@map("projects")
+}
+
+model Task {
+  id               String       @id @default(uuid()) @db.Uuid
+  title            String
+  description      String?
+  status           TaskStatus   @default(backlog)
+  priority         TaskPriority @default(medium)
+  due_date         DateTime?
+  project_id       String       @db.Uuid
+  parent_task_id   String?      @db.Uuid
+  order_index      Int          @default(0)
+  estimated_minutes Int?
+  actual_minutes   Int?
+  created_by       String       @db.Uuid
+  is_recurring     Boolean      @default(false)
+  recurrence_rule  String?
+  sprint_id        String?      @db.Uuid
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+
+  // Relations
+  project      Project          @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  parent_task  Task?            @relation("Subtasks", fields: [parent_task_id], references: [id], onDelete: Cascade)
+  subtasks     Task[]           @relation("Subtasks")
+  creator      Profile          @relation("TaskCreator", fields: [created_by], references: [id])
+  sprint       Sprint?          @relation(fields: [sprint_id], references: [id], onDelete: SetNull)
+  assignees    TaskAssignee[]
+  dependencies_on   TaskDependency[] @relation("DependentTask")
+  depended_by       TaskDependency[] @relation("DependsOnTask")
+  tags         TaskTag[]
+  attachments  TaskAttachment[]
+  comments     Comment[]
+  time_logs    TimeLog[]
+  activity_logs ActivityLog[]
+
+  @@index([project_id, status])
+  @@map("tasks")
+}
+
+model TaskAssignee {
+  id         String   @id @default(uuid()) @db.Uuid
+  task_id    String   @db.Uuid
+  user_id    String   @db.Uuid
+  created_at DateTime @default(now())
+
+  // Relations
+  task    Task    @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  profile Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([task_id, user_id])
+  @@map("task_assignees")
+}
+
+model TaskDependency {
+  id                String   @id @default(uuid()) @db.Uuid
+  task_id           String   @db.Uuid
+  depends_on_task_id String  @db.Uuid
+  created_at        DateTime @default(now())
+
+  // Relations
+  task           Task @relation("DependentTask", fields: [task_id], references: [id], onDelete: Cascade)
+  depends_on_task Task @relation("DependsOnTask", fields: [depends_on_task_id], references: [id], onDelete: Cascade)
+
+  @@unique([task_id, depends_on_task_id])
+  @@map("task_dependencies")
+}
+
+model Tag {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String    @unique
+  color      String
+  created_at DateTime  @default(now())
+
+  // Relations
+  task_tags TaskTag[]
+
+  @@map("tags")
+}
+
+model TaskTag {
+  id         String   @id @default(uuid()) @db.Uuid
+  task_id    String   @db.Uuid
+  tag_id     String   @db.Uuid
+  created_at DateTime @default(now())
+
+  // Relations
+  task Task @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tag_id], references: [id], onDelete: Cascade)
+
+  @@unique([task_id, tag_id])
+  @@map("task_tags")
+}
+
+model TaskAttachment {
+  id           String   @id @default(uuid()) @db.Uuid
+  task_id      String   @db.Uuid
+  filename     String
+  storage_path String
+  file_type    String
+  file_size    Int
+  uploaded_by  String   @db.Uuid
+  created_at   DateTime @default(now())
+
+  // Relations
+  task                Task    @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  uploaded_by_profile Profile @relation(fields: [uploaded_by], references: [id])
+
+  @@map("task_attachments")
+}
+
+model Comment {
+  id         String   @id @default(uuid()) @db.Uuid
+  task_id    String   @db.Uuid
+  author_id  String   @db.Uuid
+  body       String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relations
+  task      Task              @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  author    Profile           @relation(fields: [author_id], references: [id])
+  reactions CommentReaction[]
+
+  @@index([task_id, created_at])
+  @@map("comments")
+}
+
+model CommentReaction {
+  id         String   @id @default(uuid()) @db.Uuid
+  comment_id String   @db.Uuid
+  user_id    String   @db.Uuid
+  emoji      String
+  created_at DateTime @default(now())
+
+  // Relations
+  comment Comment @relation(fields: [comment_id], references: [id], onDelete: Cascade)
+  user    Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([comment_id, user_id, emoji])
+  @@map("comment_reactions")
+}
+
+model TimeLog {
+  id               String    @id @default(uuid()) @db.Uuid
+  task_id          String    @db.Uuid
+  user_id          String    @db.Uuid
+  start_time       DateTime
+  end_time         DateTime?
+  duration_minutes Int?
+  description      String?
+  created_at       DateTime  @default(now())
+
+  // Relations
+  task    Task    @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  profile Profile @relation(fields: [user_id], references: [id])
+
+  @@index([user_id, end_time])
+  @@map("time_logs")
+}
+
+model Notification {
+  id          String           @id @default(uuid()) @db.Uuid
+  user_id     String           @db.Uuid
+  type        NotificationType
+  title       String
+  body        String?
+  entity_type String?          // 'task' | 'project' | 'comment'
+  entity_id   String?          @db.Uuid
+  read        Boolean          @default(false)
+  created_at  DateTime         @default(now())
+
+  // Relations
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, read, created_at(sort: Desc)])
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  task_id    String   @db.Uuid
+  user_id    String   @db.Uuid
+  action     String
+  metadata   Json?
+  created_at DateTime @default(now())
+
+  // Relations
+  task    Task    @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  profile Profile @relation(fields: [user_id], references: [id])
+
+  @@map("activity_log")
+}
+
+model Sprint {
+  id         String       @id @default(uuid()) @db.Uuid
+  project_id String       @db.Uuid
+  name       String
+  goal       String?
+  start_date DateTime
+  end_date   DateTime
+  status     SprintStatus @default(planning)
+  created_at DateTime     @default(now())
+
+  // Relations
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  tasks   Task[]
+
+  @@map("sprints")
+}

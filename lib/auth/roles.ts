@@ -38,16 +38,16 @@ const PERMISSION_MAP: Record<Permission, UserRole[]> = {
   view_audit_log: ['super_admin', 'project_manager'],
 };
 
-export function can(role: UserRole | undefined, permission: Permission): boolean {
+export function can(role: string | undefined, permission: Permission): boolean {
   if (!role) return false;
-  return PERMISSION_MAP[permission].includes(role);
+  return PERMISSION_MAP[permission].includes(role as UserRole);
 }
 
-export function isManagerOrAbove(role: UserRole | undefined): boolean {
+export function isManagerOrAbove(role: string | undefined): boolean {
   if (!role) return false;
   return ['super_admin', 'project_manager', 'team_lead'].includes(role);
 }
 
-export function isAdmin(role: UserRole | undefined): boolean {
+export function isAdmin(role: string | undefined): boolean {
   return role === 'super_admin';
 }
