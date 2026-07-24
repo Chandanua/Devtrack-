@@ -9,6 +9,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { CommandPalette } from '@/components/layout/command-palette';
 import { NotificationsBell } from '@/components/layout/notifications-bell';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { PresenceIndicator } from '@/components/shared/presence-indicator';
 
 const pageTitles: Record<string, string> = {
   '/dashboard': 'Dashboard',
@@ -41,6 +42,7 @@ export function Topbar() {
         </Button>
         <h1 className="text-base font-semibold tracking-tight md:text-lg">{title}</h1>
         <div className="flex flex-1 items-center justify-end gap-2">
+          <PresenceIndicator />
           <div className="hidden sm:block">
             <CommandPalette />
           </div>

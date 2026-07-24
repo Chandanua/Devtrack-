@@ -9,6 +9,8 @@ import { TASK_STATUSES, TASK_STATUS_META, TASK_PRIORITIES, TASK_PRIORITY_META } 
 import { cn } from '@/lib/utils';
 import { formatRelativeTime, formatDuration, isOverdue, formatBytes } from '@/lib/utils/date';
 import { useAuth } from '@/components/providers/auth-provider';
+import { useSocket } from '@/components/providers/socket-provider';
+import { SOCKET_EVENTS } from '@/lib/socket/events';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,6 +23,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { PriorityBadge, StatusBadge, TagChip } from '@/components/shared/badges';
+import { RichMarkdownEditor } from '@/components/shared/rich-markdown-editor';
+import { GitHubLinksCard } from '@/components/tasks/github-links-card';
 import { AvatarStack, SingleAvatar } from '@/components/shared/avatar-stack';
 import { EmptyState } from '@/components/shared/empty-state';
 import { TaskFormDialog } from '@/components/tasks/task-form-dialog';
@@ -33,6 +37,7 @@ export default function TaskDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
+  const { socket, joinTask, leaveTask } = useSocket();
   const taskId = params.id as string;
   const [task, setTask] = useState<TaskWithRelations | null>(null);
   const [comments, setComments] = useState<any[]>([]);
@@ -82,6 +87,29 @@ export default function TaskDetailPage() {
   }, [taskId]);
 
   useEffect(() => { fetchTask(); fetchComments(); fetchActivity(); checkTimer(); }, [fetchTask, fetchComments, fetchActivity, checkTimer]);
+
+  // Join task room for live comments and updates
+  useEffect(() => {
+    if (!taskId) return;
+    joinTask(taskId);
+
+    if (socket) {
+      const handleNewComment = (comment: any) => {
+        setComments((prev) => {
+          if (prev.some((c) => c.id === comment.id)) return prev;
+          return [...prev, comment];
+        });
+      };
+
+      socket.on(SOCKET_EVENTS.COMMENT_CREATED, handleNewComment);
+      return () => {
+        socket.off(SOCKET_EVENTS.COMMENT_CREATED, handleNewComment);
+        leaveTask(taskId);
+      };
+    }
+
+    return () => { leaveTask(taskId); };
+  }, [taskId, socket, joinTask, leaveTask]);
   useEffect(() => {
     Promise.all([fetch('/api/projects'), fetch('/api/members'), fetch('/api/tags')]).then(async ([p, m, t]) => {
       if (p.ok) setProjects(await p.json());
@@ -267,6 +295,11 @@ export default function TaskDetailPage() {
             </div>
           </div>
         </Card>
+
+        {/* GitHub PR Integration Card */}
+        <div className="mb-6">
+          <GitHubLinksCard taskId={taskId} links={(task as any).github_links ?? []} />
+        </div>
       </motion.div>
 
       <Tabs defaultValue="comments">
@@ -306,7 +339,7 @@ export default function TaskDetailPage() {
             <div className="flex items-start gap-3">
               <SingleAvatar user={{ id: user?.id ?? '', full_name: user?.email ?? 'You', avatar_url: null }} size="sm" />
               <div className="flex-1">
-                <Textarea placeholder="Write a comment..." value={newComment} onChange={(e) => setNewComment(e.target.value)} className="min-h-[80px]" />
+                <RichMarkdownEditor value={newComment} onChange={setNewComment} placeholder="Write a comment... (Markdown supported, use @ to mention)" members={members} rows={3} />
                 <Button size="sm" className="mt-2 gap-2" onClick={handleAddComment} disabled={commentLoading || !newComment.trim()}>{commentLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}Comment</Button>
               </div>
             </div>

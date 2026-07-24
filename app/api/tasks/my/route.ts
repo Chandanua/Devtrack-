@@ -1,15 +1,16 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getUserId } from '@/lib/auth/get-user';
+import { requireOrgAccess } from '@/lib/auth/get-org';
 
 export async function GET(request: Request) {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const access = await requireOrgAccess();
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const tasks = await prisma.task.findMany({
     where: {
       parent_task_id: null,
-      assignees: { some: { user_id: userId } },
+      assignees: { some: { user_id: access.userId } },
+      project: { org_id: access.orgId },
     },
     include: {
       project: { select: { id: true, name: true } },

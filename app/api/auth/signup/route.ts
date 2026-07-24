@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
 import { signToken, COOKIE_NAME, COOKIE_OPTIONS } from '@/lib/auth/jwt';
+import { slugify } from '@/lib/auth/oauth';
+import { ORG_COOKIE } from '@/lib/auth/get-org';
 import type { UserRole } from '@prisma/client';
 
 const ALLOWED_ROLES: UserRole[] = ['developer', 'qa_tester', 'designer', 'team_lead', 'project_manager'];
@@ -27,13 +29,28 @@ export async function POST(request: Request) {
 
     const password_hash = await hashPassword(password);
 
-    const profile = await prisma.profile.create({
-      data: {
-        email,
-        password_hash,
-        full_name: full_name.trim(),
-        role: selectedRole,
-      },
+    // Create profile + personal org in a transaction
+    const { profile, org } = await prisma.$transaction(async (tx) => {
+      const profile = await tx.profile.create({
+        data: {
+          email,
+          password_hash,
+          full_name: full_name.trim(),
+          role: selectedRole,
+        },
+      });
+
+      const org = await tx.organization.create({
+        data: {
+          name: `${full_name.trim()}'s Workspace`,
+          slug: slugify(`${full_name.trim()}-${Date.now()}`),
+          members: {
+            create: { user_id: profile.id, role: 'owner' },
+          },
+        },
+      });
+
+      return { profile, org };
     });
 
     const token = await signToken(profile.id);
@@ -46,10 +63,19 @@ export async function POST(request: Request) {
         avatar_url: profile.avatar_url,
         job_title: profile.job_title,
         availability: profile.availability,
+        org_role: 'owner',
       },
     });
 
     response.cookies.set(COOKIE_NAME, token, COOKIE_OPTIONS);
+    response.cookies.set(ORG_COOKIE, org.id, {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365,
+    });
+
     return response;
   } catch (error) {
     console.error('Signup error:', error);

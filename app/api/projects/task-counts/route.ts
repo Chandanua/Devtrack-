@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getUserId } from '@/lib/auth/get-user';
+import { requireOrgAccess } from '@/lib/auth/get-org';
 
 export async function GET() {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const access = await requireOrgAccess();
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const projects = await prisma.project.findMany({
+    where: { org_id: access.orgId },
     include: {
       team: true,
       _count: {

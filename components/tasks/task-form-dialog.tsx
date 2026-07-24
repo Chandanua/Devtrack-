@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TASK_STATUSES, TASK_STATUS_META, TASK_PRIORITIES, TASK_PRIORITY_META } from '@/lib/constants';
+import { RichMarkdownEditor } from '@/components/shared/rich-markdown-editor';
 import { toast } from 'sonner';
 
 interface TaskFormDialogProps {
@@ -106,8 +107,8 @@ export function TaskFormDialog({ open, onOpenChange, task, projects, teamMembers
             <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task title" required autoFocus />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="desc">Description</Label>
-            <Textarea id="desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional description" rows={3} />
+            <Label htmlFor="desc">Description (Markdown supported)</Label>
+            <RichMarkdownEditor value={description} onChange={setDescription} members={teamMembers} rows={3} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

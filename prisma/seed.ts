@@ -7,6 +7,17 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Seeding DevTrack database...');
 
+  // ── Organization ──────────────────────────────────
+  const orgId = uuid();
+  const org = await prisma.organization.create({
+    data: {
+      id: orgId,
+      name: 'DevTrack HQ',
+      slug: 'devtrack-hq',
+    },
+  });
+  console.log('✅ Organization created:', org.name);
+
   // ── Users ─────────────────────────────────────────
   const adminId = uuid();
   const devId = uuid();
@@ -48,21 +59,21 @@ async function main() {
       password_hash: hashSync('priya123', 12),
       full_name: 'Priya Sharma',
       role: 'qa_tester',
-      job_title: 'Senior QA Engineer',
+      job_title: 'QA Engineer',
       avatar_url: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Priya',
-      availability: 'busy',
+      availability: 'available',
     },
   });
 
   const designer = await prisma.profile.create({
     data: {
       id: designerId,
-      email: 'nina@devtrack.io',
-      password_hash: hashSync('nina123', 12),
-      full_name: 'Nina Petrova',
+      email: 'maya@devtrack.io',
+      password_hash: hashSync('maya123', 12),
+      full_name: 'Maya Chen',
       role: 'designer',
-      job_title: 'Lead UI/UX Designer',
-      avatar_url: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Nina',
+      job_title: 'UI/UX Designer',
+      avatar_url: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Maya',
       availability: 'available',
     },
   });
@@ -70,237 +81,384 @@ async function main() {
   const lead = await prisma.profile.create({
     data: {
       id: leadId,
-      email: 'marcus@devtrack.io',
-      password_hash: hashSync('marcus123', 12),
-      full_name: 'Marcus Chen',
+      email: 'sam@devtrack.io',
+      password_hash: hashSync('sam123', 12),
+      full_name: 'Sam Wilson',
       role: 'team_lead',
-      job_title: 'Tech Lead — Platform',
-      avatar_url: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Marcus',
-      availability: 'away',
+      job_title: 'Tech Lead',
+      avatar_url: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Sam',
+      availability: 'busy',
     },
   });
 
   const devOps = await prisma.profile.create({
     data: {
       id: devOpsId,
-      email: 'sam@devtrack.io',
-      password_hash: hashSync('sam123', 12),
-      full_name: 'Sam Nakamura',
+      email: 'riley@devtrack.io',
+      password_hash: hashSync('riley123', 12),
+      full_name: 'Riley Brooks',
       role: 'developer',
       job_title: 'DevOps Engineer',
-      avatar_url: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Sam',
+      avatar_url: 'https://api.dicebear.com/9.x/avataaars/svg?seed=Riley',
       availability: 'available',
     },
   });
 
-  console.log('  ✅ Created 6 users');
+  console.log('✅ Users created');
 
-  // ── Team ──────────────────────────────────────────
-  const team = await prisma.team.create({
+  // ── Org Memberships ───────────────────────────────
+  await prisma.orgMembership.createMany({
+    data: [
+      { org_id: orgId, user_id: adminId, role: 'owner' },
+      { org_id: orgId, user_id: leadId, role: 'admin' },
+      { org_id: orgId, user_id: devId, role: 'member' },
+      { org_id: orgId, user_id: qaId, role: 'member' },
+      { org_id: orgId, user_id: designerId, role: 'member' },
+      { org_id: orgId, user_id: devOpsId, role: 'member' },
+    ],
+  });
+  console.log('✅ Org memberships created');
+
+  // ── Teams ─────────────────────────────────────────
+  const frontendTeamId = uuid();
+  const backendTeamId = uuid();
+
+  await prisma.team.create({
     data: {
-      name: 'Core Engineering',
-      description: 'Main product development team',
+      id: frontendTeamId,
+      name: 'Frontend',
+      description: 'UI/UX and frontend development',
+      org_id: orgId,
       created_by: adminId,
       members: {
         create: [
-          { user_id: adminId, role_within_team: 'lead' },
-          { user_id: devId, role_within_team: 'member' },
-          { user_id: qaId, role_within_team: 'member' },
+          { user_id: devId, role_within_team: 'lead' },
           { user_id: designerId, role_within_team: 'member' },
+        ],
+      },
+    },
+  });
+
+  await prisma.team.create({
+    data: {
+      id: backendTeamId,
+      name: 'Backend',
+      description: 'API and infrastructure',
+      org_id: orgId,
+      created_by: adminId,
+      members: {
+        create: [
           { user_id: leadId, role_within_team: 'lead' },
           { user_id: devOpsId, role_within_team: 'member' },
         ],
       },
     },
   });
+  console.log('✅ Teams created');
 
-  console.log('  ✅ Created team with 6 members');
+  // ── Tags (scoped to org) ──────────────────────────
+  const tags = await Promise.all([
+    prisma.tag.create({ data: { name: 'bug', color: 'red', org_id: orgId } }),
+    prisma.tag.create({ data: { name: 'feature', color: 'blue', org_id: orgId } }),
+    prisma.tag.create({ data: { name: 'improvement', color: 'green', org_id: orgId } }),
+    prisma.tag.create({ data: { name: 'documentation', color: 'amber', org_id: orgId } }),
+    prisma.tag.create({ data: { name: 'performance', color: 'violet', org_id: orgId } }),
+    prisma.tag.create({ data: { name: 'security', color: 'red', org_id: orgId } }),
+    prisma.tag.create({ data: { name: 'design', color: 'pink', org_id: orgId } }),
+    prisma.tag.create({ data: { name: 'devops', color: 'cyan', org_id: orgId } }),
+  ]);
+  console.log('✅ Tags created');
 
-  // ── Tags ──────────────────────────────────────────
-  const tagData = [
-    { name: 'Bug', color: 'red' },
-    { name: 'Feature', color: 'blue' },
-    { name: 'Improvement', color: 'violet' },
-    { name: 'Documentation', color: 'cyan' },
-    { name: 'Design', color: 'pink' },
-    { name: 'Performance', color: 'amber' },
-    { name: 'Security', color: 'orange' },
-    { name: 'DevOps', color: 'green' },
-  ];
-
-  const tags: Record<string, string> = {};
-  for (const t of tagData) {
-    const tag = await prisma.tag.create({ data: t });
-    tags[t.name] = tag.id;
-  }
-
-  console.log('  ✅ Created 8 tags');
-
-  // ── Projects ──────────────────────────────────────
-  const proj1 = await prisma.project.create({
+  // ── Projects (scoped to org) ──────────────────────
+  const projAlpha = await prisma.project.create({
     data: {
-      name: 'DevTrack Platform',
-      description: 'Main product — the task management platform itself.',
-      status: 'active',
-      progress: 45,
-      team_id: team.id,
-      created_by: adminId,
-      start_date: new Date('2026-06-01'),
-      end_date: new Date('2026-12-31'),
+      name: 'Project Alpha',
+      description: 'Main SaaS product — next-gen analytics dashboard with real-time data visualization',
       client_name: 'Internal',
-    },
-  });
-
-  const proj2 = await prisma.project.create({
-    data: {
-      name: 'Mobile App v2',
-      description: 'React Native mobile companion app for DevTrack.',
-      status: 'planning',
-      progress: 10,
-      team_id: team.id,
+      status: 'active',
+      start_date: new Date('2025-01-15'),
+      end_date: new Date('2025-06-30'),
+      org_id: orgId,
+      team_id: frontendTeamId,
       created_by: adminId,
-      start_date: new Date('2026-08-01'),
-      end_date: new Date('2027-03-31'),
-      client_name: 'Product Team',
+      progress: 42,
     },
   });
 
-  console.log('  ✅ Created 2 projects');
+  const projBeta = await prisma.project.create({
+    data: {
+      name: 'API Gateway v2',
+      description: 'Rebuild the API gateway with rate limiting, caching, and improved auth',
+      client_name: 'Platform Team',
+      status: 'active',
+      start_date: new Date('2025-02-01'),
+      end_date: new Date('2025-05-31'),
+      org_id: orgId,
+      team_id: backendTeamId,
+      created_by: leadId,
+      progress: 65,
+    },
+  });
+
+  const projGamma = await prisma.project.create({
+    data: {
+      name: 'Mobile App',
+      description: 'React Native companion app for the main platform',
+      status: 'planning',
+      start_date: new Date('2025-04-01'),
+      org_id: orgId,
+      created_by: adminId,
+      progress: 5,
+    },
+  });
+  console.log('✅ Projects created');
+
+  // ── Sprints ───────────────────────────────────────
+  const sprint1 = await prisma.sprint.create({
+    data: {
+      project_id: projAlpha.id,
+      name: 'Sprint 7 — Dashboard Revamp',
+      goal: 'Redesign the analytics dashboard with new chart components',
+      start_date: new Date('2025-03-10'),
+      end_date: new Date('2025-03-24'),
+      status: 'active',
+    },
+  });
+
+  await prisma.sprint.create({
+    data: {
+      project_id: projBeta.id,
+      name: 'Sprint 4 — Rate Limiter',
+      goal: 'Implement token-bucket rate limiting and Redis caching layer',
+      start_date: new Date('2025-03-03'),
+      end_date: new Date('2025-03-17'),
+      status: 'active',
+    },
+  });
+  console.log('✅ Sprints created');
 
   // ── Tasks ─────────────────────────────────────────
-  const taskDefs = [
-    { title: 'Set up CI/CD pipeline', status: 'completed' as const, priority: 'high' as const, project_id: proj1.id, due: -10, tags: ['DevOps'], assignee: devOpsId },
-    { title: 'Design dashboard layout', status: 'completed' as const, priority: 'medium' as const, project_id: proj1.id, due: -7, tags: ['Design'], assignee: designerId },
-    { title: 'Implement JWT authentication', status: 'completed' as const, priority: 'critical' as const, project_id: proj1.id, due: -5, tags: ['Security', 'Feature'], assignee: devId },
-    { title: 'Build Kanban board with drag & drop', status: 'in_progress' as const, priority: 'high' as const, project_id: proj1.id, due: 3, tags: ['Feature'], assignee: devId },
-    { title: 'Add dark mode support', status: 'in_progress' as const, priority: 'medium' as const, project_id: proj1.id, due: 5, tags: ['Design', 'Improvement'], assignee: designerId },
-    { title: 'Write API documentation', status: 'todo' as const, priority: 'medium' as const, project_id: proj1.id, due: 7, tags: ['Documentation'], assignee: leadId },
-    { title: 'Fix calendar timezone bug', status: 'todo' as const, priority: 'high' as const, project_id: proj1.id, due: 4, tags: ['Bug'], assignee: qaId },
-    { title: 'Optimize database queries', status: 'backlog' as const, priority: 'medium' as const, project_id: proj1.id, due: 14, tags: ['Performance'], assignee: leadId },
-    { title: 'Add email notifications', status: 'backlog' as const, priority: 'low' as const, project_id: proj1.id, due: 21, tags: ['Feature'], assignee: devOpsId },
-    { title: 'Code review automation', status: 'code_review' as const, priority: 'medium' as const, project_id: proj1.id, due: 2, tags: ['DevOps', 'Improvement'], assignee: devOpsId },
-    { title: 'Mobile app wireframes', status: 'todo' as const, priority: 'high' as const, project_id: proj2.id, due: 10, tags: ['Design'], assignee: designerId },
-    { title: 'Set up React Native project', status: 'backlog' as const, priority: 'medium' as const, project_id: proj2.id, due: 15, tags: ['Feature'], assignee: devId },
-    { title: 'Write end-to-end test suite', status: 'in_progress' as const, priority: 'high' as const, project_id: proj1.id, due: 6, tags: ['Bug', 'Improvement'], assignee: qaId },
-    { title: 'Audit accessibility (WCAG 2.1)', status: 'todo' as const, priority: 'medium' as const, project_id: proj1.id, due: 12, tags: ['Design', 'Documentation'], assignee: qaId },
-    { title: 'Infrastructure monitoring setup', status: 'in_progress' as const, priority: 'high' as const, project_id: proj1.id, due: 8, tags: ['DevOps', 'Security'], assignee: devOpsId },
-    { title: 'Refactor state management', status: 'code_review' as const, priority: 'medium' as const, project_id: proj1.id, due: 3, tags: ['Improvement', 'Performance'], assignee: leadId },
+  const tasks = [
+    {
+      title: 'Design new dashboard wireframes',
+      description: 'Create low-fidelity wireframes for the revamped analytics dashboard. Include desktop and tablet breakpoints.',
+      status: 'completed' as const,
+      priority: 'high' as const,
+      project_id: projAlpha.id,
+      created_by: adminId,
+      sprint_id: sprint1.id,
+      assignees: [designerId],
+      tags: [tags[6].id],
+      due_date: new Date('2025-03-12'),
+      order_index: 0,
+    },
+    {
+      title: 'Implement chart component library',
+      description: 'Build reusable React chart components using Recharts — bar, line, pie, area, and sparkline.',
+      status: 'in_progress' as const,
+      priority: 'critical' as const,
+      project_id: projAlpha.id,
+      created_by: leadId,
+      sprint_id: sprint1.id,
+      assignees: [devId],
+      tags: [tags[1].id],
+      due_date: new Date('2025-03-18'),
+      order_index: 1,
+    },
+    {
+      title: 'Fix date picker timezone bug',
+      description: 'Date picker shows wrong dates for users in negative UTC offsets. Investigate and fix.',
+      status: 'todo' as const,
+      priority: 'high' as const,
+      project_id: projAlpha.id,
+      created_by: qaId,
+      assignees: [devId],
+      tags: [tags[0].id],
+      due_date: new Date('2025-03-15'),
+      order_index: 2,
+    },
+    {
+      title: 'Set up Redis caching layer',
+      description: 'Configure Redis for API response caching. Implement cache invalidation strategies for data consistency.',
+      status: 'in_progress' as const,
+      priority: 'critical' as const,
+      project_id: projBeta.id,
+      created_by: leadId,
+      assignees: [devOpsId],
+      tags: [tags[4].id, tags[7].id],
+      due_date: new Date('2025-03-14'),
+      order_index: 0,
+    },
+    {
+      title: 'Write API documentation',
+      description: 'Document all API endpoints using OpenAPI/Swagger. Include request/response examples.',
+      status: 'backlog' as const,
+      priority: 'medium' as const,
+      project_id: projBeta.id,
+      created_by: adminId,
+      assignees: [devId],
+      tags: [tags[3].id],
+      order_index: 1,
+    },
+    {
+      title: 'Security audit: auth endpoints',
+      description: 'Review all authentication endpoints for OWASP top-10 vulnerabilities. Test rate limiting on login.',
+      status: 'todo' as const,
+      priority: 'critical' as const,
+      project_id: projBeta.id,
+      created_by: leadId,
+      assignees: [qaId],
+      tags: [tags[5].id],
+      due_date: new Date('2025-03-20'),
+      order_index: 2,
+    },
+    {
+      title: 'Create mobile app project structure',
+      description: 'Initialize React Native project with Expo. Set up navigation, state management, and theme system.',
+      status: 'todo' as const,
+      priority: 'medium' as const,
+      project_id: projGamma.id,
+      created_by: adminId,
+      assignees: [devId, designerId],
+      tags: [tags[1].id],
+      order_index: 0,
+    },
+    {
+      title: 'Performance: optimize dashboard queries',
+      description: 'Dashboard load time exceeds 3s. Profile SQL queries and add appropriate indexes.',
+      status: 'blocked' as const,
+      priority: 'high' as const,
+      project_id: projAlpha.id,
+      created_by: devId,
+      assignees: [devOpsId, leadId],
+      tags: [tags[4].id],
+      due_date: new Date('2025-03-22'),
+      order_index: 3,
+    },
   ];
 
-  const createdTasks: string[] = [];
-  for (let i = 0; i < taskDefs.length; i++) {
-    const t = taskDefs[i];
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + t.due);
+  for (const taskData of tasks) {
+    const { assignees, tags: tagIds, ...data } = taskData;
+    const task = await prisma.task.create({ data });
 
-    const task = await prisma.task.create({
-      data: {
-        title: t.title,
-        status: t.status,
-        priority: t.priority,
-        project_id: t.project_id,
-        created_by: adminId,
-        due_date: dueDate,
-        order_index: i,
-        estimated_minutes: Math.floor(Math.random() * 480 + 60),
-      },
-    });
-
-    createdTasks.push(task.id);
-
-    // Assign
-    await prisma.taskAssignee.create({ data: { task_id: task.id, user_id: t.assignee } });
-
-    // Tags
-    for (const tagName of t.tags) {
-      if (tags[tagName]) {
-        await prisma.taskTag.create({ data: { task_id: task.id, tag_id: tags[tagName] } });
-      }
+    if (assignees?.length) {
+      await prisma.taskAssignee.createMany({
+        data: assignees.map((uid) => ({ task_id: task.id, user_id: uid })),
+      });
+    }
+    if (tagIds?.length) {
+      await prisma.taskTag.createMany({
+        data: tagIds.map((tid) => ({ task_id: task.id, tag_id: tid })),
+      });
     }
 
-    // Activity
+    // Activity log
     await prisma.activityLog.create({
-      data: { task_id: task.id, user_id: adminId, action: 'created', metadata: { title: t.title } },
-    });
-  }
-
-  console.log(`  ✅ Created ${taskDefs.length} tasks with tags & assignments`);
-
-  // ── Subtasks ──────────────────────────────────────
-  const kanbanTask = createdTasks[3]; // "Build Kanban board"
-  const subtaskTitles = ['Create column components', 'Implement drag handlers', 'Add task card animations'];
-  for (let i = 0; i < subtaskTitles.length; i++) {
-    await prisma.task.create({
       data: {
-        title: subtaskTitles[i],
-        project_id: proj1.id,
-        parent_task_id: kanbanTask,
-        status: i === 0 ? 'completed' : 'todo',
-        priority: 'medium',
-        created_by: devId,
-        order_index: i,
+        task_id: task.id,
+        user_id: taskData.created_by,
+        action: 'created',
+        metadata: { title: task.title },
       },
     });
   }
-
-  console.log('  ✅ Created 3 subtasks');
+  console.log('✅ Tasks created with assignees, tags & activity');
 
   // ── Comments ──────────────────────────────────────
-  const comment1 = await prisma.comment.create({
-    data: { task_id: kanbanTask, author_id: adminId, body: 'Looking great so far! Can we add smooth spring animations to the card drop?' },
-  });
-
-  await prisma.comment.create({
-    data: { task_id: kanbanTask, author_id: devId, body: "Sure! I'll use Framer Motion's layoutId for that. Should be smooth." },
-  });
-
-  await prisma.commentReaction.create({
-    data: { comment_id: comment1.id, user_id: devId, emoji: '🚀' },
-  });
-
-  console.log('  ✅ Created comments & reactions');
-
-  // ── Time Logs ─────────────────────────────────────
-  const timeLogTask = createdTasks[0]; // "Set up CI/CD pipeline"
-  const now = new Date();
-  await prisma.timeLog.create({
-    data: {
-      task_id: timeLogTask,
-      user_id: devId,
-      start_time: new Date(now.getTime() - 3 * 3600000),
-      end_time: new Date(now.getTime() - 1.5 * 3600000),
-      duration_minutes: 90,
-    },
-  });
-
-  await prisma.timeLog.create({
-    data: {
-      task_id: createdTasks[2],
-      user_id: devId,
-      start_time: new Date(now.getTime() - 26 * 3600000),
-      end_time: new Date(now.getTime() - 24 * 3600000),
-      duration_minutes: 120,
-    },
-  });
-
-  console.log('  ✅ Created time logs');
+  const firstTask = await prisma.task.findFirst({ where: { project_id: projAlpha.id }, orderBy: { order_index: 'asc' } });
+  if (firstTask) {
+    const comment = await prisma.comment.create({
+      data: {
+        task_id: firstTask.id,
+        author_id: designerId,
+        body: 'Wireframes are ready for review. I\'ve included both desktop and tablet layouts. Let me know if we need mobile as well.',
+      },
+    });
+    await prisma.commentReaction.create({
+      data: { comment_id: comment.id, user_id: adminId, emoji: '👍' },
+    });
+    await prisma.comment.create({
+      data: {
+        task_id: firstTask.id,
+        author_id: adminId,
+        body: 'Looks great! Let\'s go ahead with implementation. @Jordan — can you pick up the chart components next?',
+      },
+    });
+  }
+  console.log('✅ Comments & reactions created');
 
   // ── Notifications ─────────────────────────────────
   await prisma.notification.createMany({
     data: [
-      { user_id: devId, type: 'task_assigned', title: 'You were assigned to a task', body: 'Build Kanban board with drag & drop', entity_type: 'task', entity_id: kanbanTask },
-      { user_id: adminId, type: 'status_change', title: 'Task status updated', body: 'Set up CI/CD pipeline: in_progress → completed', entity_type: 'task', entity_id: timeLogTask },
-      { user_id: devId, type: 'comment_mention', title: 'New comment on your task', body: 'Looking great so far! Can we add smooth spring animations...', entity_type: 'task', entity_id: kanbanTask },
+      {
+        user_id: devId,
+        type: 'task_assigned',
+        title: 'New task assigned',
+        body: 'You were assigned to "Implement chart component library"',
+        entity_type: 'task',
+        read: false,
+      },
+      {
+        user_id: qaId,
+        type: 'task_assigned',
+        title: 'New task assigned',
+        body: 'You were assigned to "Security audit: auth endpoints"',
+        entity_type: 'task',
+        read: false,
+      },
+      {
+        user_id: devOpsId,
+        type: 'deadline_approaching',
+        title: 'Deadline approaching',
+        body: '"Set up Redis caching layer" is due in 2 days',
+        entity_type: 'task',
+        read: true,
+      },
     ],
   });
+  console.log('✅ Notifications created');
 
-  console.log('  ✅ Created notifications');
-  console.log('\n🎉 Seed complete!');
+  // ── Time Logs ─────────────────────────────────────
+  const chartTask = await prisma.task.findFirst({ where: { title: { contains: 'chart component' } } });
+  if (chartTask) {
+    await prisma.timeLog.create({
+      data: {
+        task_id: chartTask.id,
+        user_id: devId,
+        start_time: new Date('2025-03-13T09:00:00'),
+        end_time: new Date('2025-03-13T12:30:00'),
+        duration_minutes: 210,
+        description: 'Built bar and line chart components',
+      },
+    });
+    await prisma.timeLog.create({
+      data: {
+        task_id: chartTask.id,
+        user_id: devId,
+        start_time: new Date('2025-03-13T13:30:00'),
+        end_time: new Date('2025-03-13T17:00:00'),
+        duration_minutes: 210,
+        description: 'Built pie chart and sparkline components',
+      },
+    });
+  }
+  console.log('✅ Time logs created');
+
+  console.log('\n🎉 Seed completed successfully!');
   console.log('\n📋 Login credentials:');
-  console.log('   Admin:     admin@devtrack.io / admin123');
-  console.log('   Developer: dev@devtrack.io   / dev123');
+  console.log('   admin@devtrack.io / admin123  (Owner)');
+  console.log('   dev@devtrack.io   / dev123    (Member)');
+  console.log('   priya@devtrack.io / priya123  (Member)');
+  console.log('   maya@devtrack.io  / maya123   (Member)');
+  console.log('   sam@devtrack.io   / sam123    (Admin)');
+  console.log('   riley@devtrack.io / riley123  (Member)');
 }
 
 main()
-  .catch((e) => { console.error('❌ Seed failed:', e); process.exit(1); })
-  .finally(() => prisma.$disconnect());
+  .catch((e) => {
+    console.error('Seed failed:', e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

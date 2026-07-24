@@ -1,14 +1,19 @@
 'use client';
+
 import { useEffect, useState, useCallback } from 'react';
 import { Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { formatRelativeTime } from '@/lib/utils/date';
+import { useSocket } from '@/components/providers/socket-provider';
+import { SOCKET_EVENTS } from '@/lib/socket/events';
+import { toast } from 'sonner';
 import Link from 'next/link';
 
 export function NotificationsBell() {
   const [notifications, setNotifications] = useState<any[]>([]);
+  const { socket } = useSocket();
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -19,9 +24,24 @@ export function NotificationsBell() {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30_000);
-    return () => clearInterval(interval);
   }, [fetchNotifications]);
+
+  // Real-time notification socket listener
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleNewNotif = (notif: any) => {
+      setNotifications((prev) => [notif, ...prev]);
+      toast.info(notif.title, {
+        description: notif.body,
+      });
+    };
+
+    socket.on(SOCKET_EVENTS.NOTIFICATION_NEW, handleNewNotif);
+    return () => {
+      socket.off(SOCKET_EVENTS.NOTIFICATION_NEW, handleNewNotif);
+    };
+  }, [socket]);
 
   const unread = notifications.filter((n) => !n.read).length;
 
@@ -44,10 +64,10 @@ export function NotificationsBell() {
             <p className="p-4 text-center text-sm text-muted-foreground">No notifications</p>
           ) : (
             notifications.slice(0, 10).map((n) => (
-              <Link key={n.id} href={n.entity_type === 'task' && n.entity_id ? `/tasks/${n.entity_id}` : '/notifications'} className={cn('block border-b p-3 transition-colors hover:bg-muted/50', !n.read && 'bg-primary/5')}>
+              <Link key={n.id || Math.random()} href={n.entity_type === 'task' && n.entity_id ? `/tasks/${n.entity_id}` : '/notifications'} className={cn('block border-b p-3 transition-colors hover:bg-muted/50', !n.read && 'bg-primary/5')}>
                 <p className={cn('text-xs', !n.read && 'font-medium')}>{n.title}</p>
                 {n.body && <p className="mt-0.5 text-[10px] text-muted-foreground line-clamp-1">{n.body}</p>}
-                <p className="mt-0.5 text-[10px] text-muted-foreground">{formatRelativeTime(n.created_at)}</p>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">{formatRelativeTime(n.created_at || new Date())}</p>
               </Link>
             ))
           )}

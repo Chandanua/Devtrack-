@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getUserId } from '@/lib/auth/get-user';
+import { requireOrgAccess } from '@/lib/auth/get-org';
 
 export async function GET() {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const access = await requireOrgAccess();
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const projects = await prisma.project.findMany({
+    where: { org_id: access.orgId },
     include: { team: true },
     orderBy: { created_at: 'desc' },
   });
@@ -14,8 +15,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const access = await requireOrgAccess();
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const body = await request.json();
@@ -28,8 +29,9 @@ export async function POST(request: Request) {
         status: body.status || 'planning',
         start_date: body.start_date ? new Date(body.start_date) : null,
         end_date: body.end_date ? new Date(body.end_date) : null,
+        org_id: access.orgId,
         team_id: body.team_id || null,
-        created_by: userId,
+        created_by: access.userId,
       },
     });
     return NextResponse.json(project, { status: 201 });

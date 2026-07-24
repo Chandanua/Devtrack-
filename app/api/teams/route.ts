@@ -1,17 +1,38 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getUserId } from '@/lib/auth/get-user';
+import { requireOrgAccess } from '@/lib/auth/get-org';
 
 export async function GET() {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const access = await requireOrgAccess();
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const teams = await prisma.team.findMany({
+    where: { org_id: access.orgId },
     include: {
-      members: { include: { profile: true } },
-      _count: { select: { projects: true } },
+      members: { include: { profile: { select: { id: true, full_name: true, avatar_url: true } } } },
+      _count: { select: { projects: true, members: true } },
     },
-    orderBy: { name: 'asc' },
+    orderBy: { created_at: 'desc' },
   });
   return NextResponse.json(teams);
+}
+
+export async function POST(request: Request) {
+  const access = await requireOrgAccess();
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { name, description } = await request.json();
+  if (!name?.trim()) {
+    return NextResponse.json({ error: 'Team name is required' }, { status: 400 });
+  }
+
+  const team = await prisma.team.create({
+    data: {
+      name: name.trim(),
+      description: description || null,
+      org_id: access.orgId,
+      created_by: access.userId,
+    },
+  });
+  return NextResponse.json(team, { status: 201 });
 }

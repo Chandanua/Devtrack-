@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getUserId } from '@/lib/auth/get-user';
+import { requireOrgAccess } from '@/lib/auth/get-org';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const access = await requireOrgAccess();
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
 
-  const project = await prisma.project.findUnique({
-    where: { id },
+  const project = await prisma.project.findFirst({
+    where: { id, org_id: access.orgId },
     include: { team: true },
   });
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -16,9 +16,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 }
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const access = await requireOrgAccess();
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
+
+  // Verify project belongs to org
+  const existing = await prisma.project.findFirst({ where: { id, org_id: access.orgId } });
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   try {
     const body = await req.json();
@@ -44,9 +48,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const access = await requireOrgAccess();
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
+
+  const existing = await prisma.project.findFirst({ where: { id, org_id: access.orgId } });
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   try {
     await prisma.project.delete({ where: { id } });

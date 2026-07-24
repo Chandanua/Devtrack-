@@ -2,12 +2,22 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { verifyToken, COOKIE_NAME } from '@/lib/auth/jwt';
 
-const PUBLIC_PATHS = ['/login', '/signup', '/api/auth/login', '/api/auth/signup'];
+const PUBLIC_PATHS = [
+  '/login',
+  '/signup',
+  '/api/auth/login',
+  '/api/auth/signup',
+  '/api/auth/github',
+  '/api/auth/github/callback',
+  '/api/auth/google',
+  '/api/auth/google/callback',
+  '/api/orgs/invite',
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow public paths, static files, and API auth routes
+  // Allow public paths, static files, and OAuth routes
   if (
     PUBLIC_PATHS.some((p) => pathname.startsWith(p)) ||
     pathname.startsWith('/_next') ||
@@ -35,9 +45,16 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // Pass user ID to downstream via header
+  // Pass user ID and active org to downstream via headers
   const response = NextResponse.next();
   response.headers.set('x-user-id', payload.userId);
+
+  // Forward org cookie as header for API routes
+  const orgId = request.cookies.get('devtrack-org')?.value;
+  if (orgId) {
+    response.headers.set('x-org-id', orgId);
+  }
+
   return response;
 }
 

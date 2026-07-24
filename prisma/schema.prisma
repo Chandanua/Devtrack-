@@ -9,6 +9,19 @@ datasource db {
 
 // ─── Enums ──────────────────────────────────────────────
 
+enum AuthProvider {
+  credentials
+  github
+  google
+}
+
+enum OrgRole {
+  owner
+  admin
+  member
+  viewer
+}
+
 enum UserRole {
   super_admin
   project_manager
@@ -64,14 +77,81 @@ enum NotificationType {
   status_change
   priority_update
   project_announcement
+  org_invite
 }
 
-// ─── Models ─────────────────────────────────────────────
+// ─── Organization & Multi-Tenancy ───────────────────────
+
+model Organization {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  slug       String   @unique
+  logo_url   String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  members  OrgMembership[]
+  projects Project[]
+  teams    Team[]
+  tags     Tag[]
+  invites  OrgInvite[]
+
+  @@map("organizations")
+}
+
+model OrgMembership {
+  id         String   @id @default(uuid()) @db.Uuid
+  org_id     String   @db.Uuid
+  user_id    String   @db.Uuid
+  role       OrgRole  @default(member)
+  created_at DateTime @default(now())
+
+  org     Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  profile Profile      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([org_id, user_id])
+  @@map("org_memberships")
+}
+
+model OrgInvite {
+  id         String   @id @default(uuid()) @db.Uuid
+  org_id     String   @db.Uuid
+  email      String
+  role       OrgRole  @default(member)
+  token      String   @unique @default(uuid())
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  org Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+
+  @@unique([org_id, email])
+  @@map("org_invites")
+}
+
+// ─── Auth ───────────────────────────────────────────────
+
+model Account {
+  id                  String       @id @default(uuid()) @db.Uuid
+  user_id             String       @db.Uuid
+  provider            AuthProvider
+  provider_account_id String
+  access_token        String?
+  refresh_token       String?
+  avatar_url          String?
+  created_at          DateTime     @default(now())
+
+  profile Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([provider, provider_account_id])
+  @@map("accounts")
+}
+
+// ─── User ───────────────────────────────────────────────
 
 model Profile {
   id             String           @id @default(uuid()) @db.Uuid
   email          String           @unique
-  password_hash  String
+  password_hash  String?
   full_name      String
   avatar_url     String?
   role           UserRole         @default(developer)
@@ -81,28 +161,34 @@ model Profile {
   updated_at     DateTime         @updatedAt
 
   // Relations
-  team_members     TeamMember[]
-  created_projects Project[]        @relation("ProjectCreator")
-  created_tasks    Task[]           @relation("TaskCreator")
-  task_assignees   TaskAssignee[]
-  comments         Comment[]
-  time_logs        TimeLog[]
-  notifications    Notification[]
-  activity_logs    ActivityLog[]
-  attachments      TaskAttachment[]
-  comment_reactions CommentReaction[]
+  accounts           Account[]
+  org_memberships    OrgMembership[]
+  team_members       TeamMember[]
+  created_projects   Project[]        @relation("ProjectCreator")
+  created_tasks      Task[]           @relation("TaskCreator")
+  task_assignees     TaskAssignee[]
+  comments           Comment[]
+  time_logs          TimeLog[]
+  notifications      Notification[]
+  activity_logs      ActivityLog[]
+  attachments        TaskAttachment[]
+  comment_reactions  CommentReaction[]
 
   @@map("profiles")
 }
+
+// ─── Teams ──────────────────────────────────────────────
 
 model Team {
   id          String   @id @default(uuid()) @db.Uuid
   name        String
   description String?
+  org_id      String   @db.Uuid
   created_by  String   @db.Uuid
   created_at  DateTime @default(now())
 
   // Relations
+  org      Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
   members  TeamMember[]
   projects Project[]
 
@@ -124,6 +210,8 @@ model TeamMember {
   @@map("team_members")
 }
 
+// ─── Projects ───────────────────────────────────────────
+
 model Project {
   id             String        @id @default(uuid()) @db.Uuid
   name           String
@@ -133,6 +221,7 @@ model Project {
   status         ProjectStatus @default(planning)
   start_date     DateTime?
   end_date       DateTime?
+  org_id         String        @db.Uuid
   team_id        String?       @db.Uuid
   created_by     String        @db.Uuid
   progress       Int           @default(0)
@@ -140,13 +229,16 @@ model Project {
   updated_at     DateTime      @updatedAt
 
   // Relations
-  team    Team?    @relation(fields: [team_id], references: [id], onDelete: SetNull)
-  creator Profile  @relation("ProjectCreator", fields: [created_by], references: [id])
+  org     Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  team    Team?        @relation(fields: [team_id], references: [id], onDelete: SetNull)
+  creator Profile      @relation("ProjectCreator", fields: [created_by], references: [id])
   tasks   Task[]
   sprints Sprint[]
 
   @@map("projects")
 }
+
+// ─── Tasks ──────────────────────────────────────────────
 
 model Task {
   id               String       @id @default(uuid()) @db.Uuid
@@ -181,6 +273,7 @@ model Task {
   comments     Comment[]
   time_logs    TimeLog[]
   activity_logs ActivityLog[]
+  github_links TaskGitHubLink[]
 
   @@index([project_id, status])
   @@map("tasks")
@@ -214,15 +307,20 @@ model TaskDependency {
   @@map("task_dependencies")
 }
 
+// ─── Tags ───────────────────────────────────────────────
+
 model Tag {
   id         String    @id @default(uuid()) @db.Uuid
-  name       String    @unique
+  name       String
   color      String
+  org_id     String    @db.Uuid
   created_at DateTime  @default(now())
 
   // Relations
+  org       Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
   task_tags TaskTag[]
 
+  @@unique([org_id, name])
   @@map("tags")
 }
 
@@ -240,6 +338,8 @@ model TaskTag {
   @@map("task_tags")
 }
 
+// ─── Attachments ────────────────────────────────────────
+
 model TaskAttachment {
   id           String   @id @default(uuid()) @db.Uuid
   task_id      String   @db.Uuid
@@ -256,6 +356,8 @@ model TaskAttachment {
 
   @@map("task_attachments")
 }
+
+// ─── Comments ───────────────────────────────────────────
 
 model Comment {
   id         String   @id @default(uuid()) @db.Uuid
@@ -289,6 +391,8 @@ model CommentReaction {
   @@map("comment_reactions")
 }
 
+// ─── Time Tracking ──────────────────────────────────────
+
 model TimeLog {
   id               String    @id @default(uuid()) @db.Uuid
   task_id          String    @db.Uuid
@@ -307,13 +411,15 @@ model TimeLog {
   @@map("time_logs")
 }
 
+// ─── Notifications ──────────────────────────────────────
+
 model Notification {
   id          String           @id @default(uuid()) @db.Uuid
   user_id     String           @db.Uuid
   type        NotificationType
   title       String
   body        String?
-  entity_type String?          // 'task' | 'project' | 'comment'
+  entity_type String?          // 'task' | 'project' | 'comment' | 'org'
   entity_id   String?          @db.Uuid
   read        Boolean          @default(false)
   created_at  DateTime         @default(now())
@@ -324,6 +430,8 @@ model Notification {
   @@index([user_id, read, created_at(sort: Desc)])
   @@map("notifications")
 }
+
+// ─── Activity Log ───────────────────────────────────────
 
 model ActivityLog {
   id         String   @id @default(uuid()) @db.Uuid
@@ -340,6 +448,8 @@ model ActivityLog {
   @@map("activity_log")
 }
 
+// ─── Sprints ────────────────────────────────────────────
+
 model Sprint {
   id         String       @id @default(uuid()) @db.Uuid
   project_id String       @db.Uuid
@@ -355,4 +465,25 @@ model Sprint {
   tasks   Task[]
 
   @@map("sprints")
+}
+
+// ─── GitHub Integration ─────────────────────────────────
+
+model TaskGitHubLink {
+  id              String   @id @default(uuid()) @db.Uuid
+  task_id         String   @db.Uuid
+  pr_number       Int
+  pr_title        String
+  pr_url          String
+  pr_state        String   // 'open' | 'closed' | 'merged'
+  branch_name     String?
+  repo_full_name  String
+  author_github   String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  task Task @relation(fields: [task_id], references: [id], onDelete: Cascade)
+
+  @@unique([task_id, pr_number, repo_full_name])
+  @@map("task_github_links")
 }

@@ -1,5 +1,4 @@
 // Re-export Prisma types as the app's domain types
-// This replaces the old manually-defined types that mirrored Supabase
 
 export type {
   Profile,
@@ -18,6 +17,11 @@ export type {
   Notification,
   ActivityLog,
   Sprint,
+  Organization,
+  OrgMembership,
+  OrgInvite,
+  Account,
+  TaskGitHubLink,
 } from '@prisma/client';
 
 export type {
@@ -28,6 +32,8 @@ export type {
   TaskPriority,
   SprintStatus,
   NotificationType,
+  AuthProvider,
+  OrgRole,
 } from '@prisma/client';
 
 // Extended types used by the frontend (with joined relations)

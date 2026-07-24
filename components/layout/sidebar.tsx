@@ -16,9 +16,9 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/providers/auth-provider';
-import { ROLE_LABELS_MAP } from '@/lib/constants';
 import { isManagerOrAbove } from '@/lib/auth/roles';
 import { UserMenu } from '@/components/layout/user-menu';
+import { OrgSwitcher } from '@/components/layout/org-switcher';
 
 interface NavItem {
   href: string;
@@ -40,19 +40,14 @@ const navItems: NavItem[] = [
 
 export function Sidebar({ onItemClick }: { onItemClick?: () => void }) {
   const pathname = usePathname();
-  const { profile } = useAuth();
-  const isManager = isManagerOrAbove(profile?.role);
+  const { orgRole } = useAuth();
+  const isManager = isManagerOrAbove(orgRole);
   const visibleItems = navItems.filter((item) => !item.managerOnly || isManager);
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className="flex h-16 items-center gap-2.5 px-5">
-        <Link href="/dashboard" className="flex items-center gap-2.5" onClick={onItemClick}>
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <KanbanSquare className="h-4 w-4" />
-          </div>
-          <span className="text-base font-bold tracking-tight">DevTrack</span>
-        </Link>
+      <div className="px-3 pt-4 pb-2">
+        <OrgSwitcher />
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4">
@@ -86,13 +81,6 @@ export function Sidebar({ onItemClick }: { onItemClick?: () => void }) {
       </nav>
 
       <div className="border-t border-sidebar px-3 py-4">
-        {profile && (
-          <div className="mb-3 px-2">
-            <span className="text-xs font-medium uppercase tracking-wide text-sidebar-muted-foreground">
-              {ROLE_LABELS_MAP[profile.role]}
-            </span>
-          </div>
-        )}
         <UserMenu />
       </div>
     </div>
