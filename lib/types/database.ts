@@ -1,4 +1,4 @@
-// Re-export Prisma types as the app's domain types
+// Domain types re-exported from Prisma Client
 
 export type {
   Profile,
@@ -22,9 +22,6 @@ export type {
   OrgInvite,
   Account,
   TaskGitHubLink,
-} from '@prisma/client';
-
-export type {
   UserRole,
   UserAvailability,
   ProjectStatus,

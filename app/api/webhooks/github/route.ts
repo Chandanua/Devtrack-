@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { prisma } from '@/lib/db';
+import type { TaskStatus } from '@prisma/client';
 import { emitToOrg, emitToUser } from '@/lib/socket/server';
 import { SOCKET_EVENTS } from '@/lib/socket/events';
 
@@ -120,7 +121,7 @@ export async function POST(request: Request) {
         if (newStatus && newStatus !== task.status) {
           const updated = await prisma.task.update({
             where: { id: taskId },
-            data: { status: newStatus as any },
+            data: { status: newStatus as TaskStatus },
           });
 
           // Log Activity
