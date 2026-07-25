@@ -29,6 +29,7 @@ import { GitHubLinksCard } from '@/components/tasks/github-links-card';
 import { AvatarStack, SingleAvatar } from '@/components/shared/avatar-stack';
 import { EmptyState } from '@/components/shared/empty-state';
 import { TaskFormDialog } from '@/components/tasks/task-form-dialog';
+import { HelpPanel } from '@/components/shared/help-panel';
 import { toast } from 'sonner';
 import Link from 'next/link';
 
@@ -125,10 +126,10 @@ export default function TaskDetailPage() {
         socket.off(SOCKET_EVENTS.COMMENT_CREATED, handleNewComment);
         socket.off(SOCKET_EVENTS.TYPING_START, handleTypingStart);
         socket.off(SOCKET_EVENTS.TYPING_STOP, handleTypingStop);
-        leaveTask(taskId);
       };
     }
 
+    // Single leaveTask on cleanup
     return () => { leaveTask(taskId); };
   }, [taskId, socket, joinTask, leaveTask, user?.id]);
   useEffect(() => {
@@ -257,7 +258,10 @@ export default function TaskDetailPage() {
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
-      <Button variant="ghost" size="sm" className="mb-4 gap-2" onClick={() => router.back()}><ArrowLeft className="h-4 w-4" />Back</Button>
+      <div className="mb-4 flex items-center justify-between">
+        <Button variant="ghost" size="sm" className="gap-2" onClick={() => router.back()}><ArrowLeft className="h-4 w-4" />Back</Button>
+        <HelpPanel pageKey="task-detail" />
+      </div>
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
         <Card className="mb-6 p-6">

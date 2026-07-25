@@ -14,7 +14,7 @@ export interface FilterPreset {
 }
 
 interface SavedFiltersProps {
-  onApplyFilter: (filters: Record<string, any>) => void;
+  onApplyFilter: (filters: Record<string, any>, name?: string) => void;
   currentFilters?: Record<string, any>;
 }
 
@@ -86,7 +86,7 @@ export function SavedFilters({ onApplyFilter, currentFilters }: SavedFiltersProp
               <div
                 key={preset.id}
                 onClick={() => {
-                  onApplyFilter(preset.filters);
+                  onApplyFilter(preset.filters, preset.name);
                   setOpen(false);
                 }}
                 className="flex items-center justify-between p-1.5 rounded-md hover:bg-muted cursor-pointer transition-colors group"

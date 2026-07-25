@@ -10,20 +10,16 @@ import { toast } from 'sonner';
 
 export function GithubIntegrationCard() {
   const [copiedUrl, setCopiedUrl] = useState(false);
-  const [copiedSecret, setCopiedSecret] = useState(false);
 
   const webhookUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/github` : '/api/webhooks/github';
-  const secretKey = process.env.NEXT_PUBLIC_GITHUB_WEBHOOK_SECRET || 'devtrack_webhook_secret_key_123';
+  // SECURITY: Webhook secret must NEVER be exposed client-side.
+  // Set GITHUB_WEBHOOK_SECRET (not NEXT_PUBLIC_) in your .env and configure
+  // GitHub to use the same value. Only the server can validate the signature.
 
-  function copyToClipboard(text: string, type: 'url' | 'secret') {
+  function copyToClipboard(text: string) {
     navigator.clipboard.writeText(text);
-    if (type === 'url') {
-      setCopiedUrl(true);
-      setTimeout(() => setCopiedUrl(false), 2000);
-    } else {
-      setCopiedSecret(true);
-      setTimeout(() => setCopiedSecret(false), 2000);
-    }
+    setCopiedUrl(true);
+    setTimeout(() => setCopiedUrl(false), 2000);
     toast.success('Copied to clipboard');
   }
 
@@ -47,7 +43,7 @@ export function GithubIntegrationCard() {
           <Label className="text-xs font-semibold">Payload URL</Label>
           <div className="flex items-center gap-2">
             <Input value={webhookUrl} readOnly className="font-mono text-xs bg-muted/50" />
-            <Button variant="outline" size="sm" onClick={() => copyToClipboard(webhookUrl, 'url')} className="gap-1.5 shrink-0">
+            <Button variant="outline" size="sm" onClick={() => copyToClipboard(webhookUrl)} className="gap-1.5 shrink-0">
               {copiedUrl ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
               {copiedUrl ? 'Copied' : 'Copy'}
             </Button>
@@ -55,13 +51,17 @@ export function GithubIntegrationCard() {
         </div>
 
         <div className="space-y-2">
-          <Label className="text-xs font-semibold">Webhook Secret Key</Label>
-          <div className="flex items-center gap-2">
-            <Input value={secretKey} readOnly className="font-mono text-xs bg-muted/50" />
-            <Button variant="outline" size="sm" onClick={() => copyToClipboard(secretKey, 'secret')} className="gap-1.5 shrink-0">
-              {copiedSecret ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-              {copiedSecret ? 'Copied' : 'Copy'}
-            </Button>
+          <Label className="text-xs font-semibold flex items-center gap-1.5">
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+            Webhook Secret Key
+          </Label>
+          <div className="rounded-lg border bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/40 p-3 text-xs space-y-1">
+            <p className="font-medium text-amber-700 dark:text-amber-400">Secret is server-side only</p>
+            <p className="text-amber-700/80 dark:text-amber-500/80">
+              Set <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 py-0.5 rounded">GITHUB_WEBHOOK_SECRET</code> in your{' '}
+              <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 py-0.5 rounded">.env</code> file (never <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 py-0.5 rounded">NEXT_PUBLIC_</code>).
+              Copy the same value into your GitHub webhook settings under "Secret".
+            </p>
           </div>
         </div>
 

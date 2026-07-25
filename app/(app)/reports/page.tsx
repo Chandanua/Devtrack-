@@ -37,6 +37,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SprintDialog } from '@/components/sprints/sprint-dialog';
 import { SprintBurndownChart, SprintBurnupChart } from '@/components/sprints/sprint-charts';
+import { WorkflowRules } from '@/components/shared/workflow-rules';
 import { cn } from '@/lib/utils';
 
 export default function ReportsPage() {
@@ -100,12 +101,14 @@ export default function ReportsPage() {
   return (
     <div className="p-4 md:p-6 lg:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <PageHeader title="Reports & Analytics" description="Sprint velocity, burndown, cycle time & team metrics." />
+        <PageHeader title="Reports & Analytics" description="Sprint velocity, burndown, cycle time & team metrics." helpKey="reports" />
         <Button onClick={() => setSprintDialogOpen(true)} className="gap-2 shrink-0">
           <Plus className="h-4 w-4" />
           Start New Sprint
         </Button>
       </div>
+
+      <WorkflowRules className="mb-4" />
 
       {/* Overview Stat Cards */}
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

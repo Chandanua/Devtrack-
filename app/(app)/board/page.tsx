@@ -2,7 +2,17 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Wifi, WifiOff, Layers, AlertCircle, Settings2 } from 'lucide-react';
+import {
+  Plus,
+  Wifi,
+  WifiOff,
+  Layers,
+  AlertCircle,
+  Settings2,
+  Trash2,
+  ExternalLink,
+  MoreVertical,
+} from 'lucide-react';
 import { useSocket } from '@/components/providers/socket-provider';
 import type { TaskWithRelations } from '@/lib/types/database';
 import { TASK_STATUSES, TASK_STATUS_META, TASK_PRIORITIES } from '@/lib/constants';
@@ -18,15 +28,39 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { SavedFilters } from '@/components/shared/saved-filters';
+import { WorkflowRules } from '@/components/shared/workflow-rules';
+import { HelpPanel } from '@/components/shared/help-panel';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import Link from 'next/link';
 
 type TaskStatus = (typeof TASK_STATUSES)[number];
 type SwimlaneMode = 'none' | 'assignee' | 'priority';
 
+// WIP-eligible statuses only
+const WIP_ELIGIBLE_STATUSES: TaskStatus[] = ['in_progress', 'code_review', 'testing'];
+
 export default function BoardPage() {
   const { socket, isConnected } = useSocket();
   const [tasks, setTasks] = useState<TaskWithRelations[]>([]);
+  const [filteredTasks, setFilteredTasks] = useState<TaskWithRelations[]>([]);
+  const [activeFilterName, setActiveFilterName] = useState<string | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
   const [members, setMembers] = useState<any[]>([]);
   const [tags, setTags] = useState<any[]>([]);
@@ -35,13 +69,17 @@ export default function BoardPage() {
   const [createStatus, setCreateStatus] = useState<TaskStatus>('backlog');
   const [dragging, setDragging] = useState<string | null>(null);
 
+  // Delete state
+  const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   // Swimlane & WIP State
   const [swimlane, setSwimlane] = useState<SwimlaneMode>('none');
   const [wipLimits, setWipLimits] = useState<Record<string, number>>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('devtrack_wip_limits');
       if (saved) {
-        try { return JSON.parse(saved); } catch (e) {}
+        try { return JSON.parse(saved); } catch { /* ignore */ }
       }
     }
     return { in_progress: 3, code_review: 2, testing: 3 };
@@ -57,7 +95,11 @@ export default function BoardPage() {
 
   const fetchTasks = useCallback(async () => {
     const res = await fetch('/api/tasks?parentOnly=true');
-    if (res.ok) setTasks(await res.json());
+    if (res.ok) {
+      const data = await res.json();
+      setTasks(data);
+      setFilteredTasks(data);
+    }
     setLoading(false);
   }, []);
 
@@ -71,7 +113,7 @@ export default function BoardPage() {
       });
   }, []);
 
-  // Real-time socket event listeners for Kanban board
+  // Real-time socket event listeners
   useEffect(() => {
     if (!socket) return;
 
@@ -80,15 +122,21 @@ export default function BoardPage() {
         if (prev.some((t) => t.id === newTask.id)) return prev;
         return [newTask, ...prev];
       });
+      setFilteredTasks((prev) => {
+        if (prev.some((t) => t.id === newTask.id)) return prev;
+        return [newTask, ...prev];
+      });
       toast.info(`Task created: "${newTask.title}"`);
     };
 
     const handleUpdated = (updatedTask: TaskWithRelations) => {
       setTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? updatedTask : t)));
+      setFilteredTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? updatedTask : t)));
     };
 
     const handleDeleted = ({ id }: { id: string }) => {
       setTasks((prev) => prev.filter((t) => t.id !== id));
+      setFilteredTasks((prev) => prev.filter((t) => t.id !== id));
     };
 
     socket.on(SOCKET_EVENTS.TASK_CREATED, handleCreated);
@@ -102,36 +150,51 @@ export default function BoardPage() {
     };
   }, [socket]);
 
-  // Swimlanes calculation
-  const swimlaneGroups = useMemo(() => {
-    if (swimlane === 'none') {
-      return [{ id: 'all', title: 'All Tasks', tasks }];
+  // Apply saved filter preset
+  function handleApplyFilter(filters: Record<string, any>, presetName?: string) {
+    setActiveFilterName(presetName ?? 'Custom Filter');
+    let result = [...tasks];
+    if (filters.status) result = result.filter((t) => t.status === filters.status);
+    if (filters.priority) result = result.filter((t) => t.priority === filters.priority);
+    if (filters.assignedToMe) {
+      // Filter tasks that have assignees (simplified — full implementation needs user ID)
+      result = result.filter((t) => t.assignees && t.assignees.length > 0);
     }
+    setFilteredTasks(result);
+    toast.success(`Applied filter: "${presetName ?? 'Custom'}"`);
+  }
+
+  function handleClearFilter() {
+    setFilteredTasks(tasks);
+    setActiveFilterName(null);
+  }
+
+  // Swimlanes
+  const swimlaneGroups = useMemo(() => {
+    const baseTasks = filteredTasks;
+    if (swimlane === 'none') return [{ id: 'all', title: 'All Tasks', tasks: baseTasks }];
 
     if (swimlane === 'priority') {
       return TASK_PRIORITIES.map((p) => ({
         id: p,
         title: `${p.toUpperCase()} Priority`,
-        tasks: tasks.filter((t) => t.priority === p),
+        tasks: baseTasks.filter((t) => t.priority === p),
       }));
     }
 
     if (swimlane === 'assignee') {
       const groups: { id: string; title: string; tasks: TaskWithRelations[] }[] = [];
-      const unassigned = tasks.filter((t) => !t.assignees || t.assignees.length === 0);
+      const unassigned = baseTasks.filter((t) => !t.assignees || t.assignees.length === 0);
       groups.push({ id: 'unassigned', title: 'Unassigned', tasks: unassigned });
-
       members.forEach((m) => {
-        const userTasks = tasks.filter((t) => t.assignees?.some((a) => a.id === m.id));
-        if (userTasks.length > 0) {
-          groups.push({ id: m.id, title: m.full_name, tasks: userTasks });
-        }
+        const userTasks = baseTasks.filter((t) => t.assignees?.some((a) => a.id === m.id));
+        if (userTasks.length > 0) groups.push({ id: m.id, title: m.full_name, tasks: userTasks });
       });
       return groups;
     }
 
-    return [{ id: 'all', title: 'All Tasks', tasks }];
-  }, [swimlane, tasks, members]);
+    return [{ id: 'all', title: 'All Tasks', tasks: baseTasks }];
+  }, [swimlane, filteredTasks, members]);
 
   async function handleDrop(taskId: string, newStatus: TaskStatus) {
     const task = tasks.find((t) => t.id === taskId);
@@ -139,6 +202,7 @@ export default function BoardPage() {
 
     const oldStatus = task.status;
     setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: newStatus } : t));
+    setFilteredTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: newStatus } : t));
     setDragging(null);
 
     const res = await fetch(`/api/tasks/${taskId}`, {
@@ -150,7 +214,23 @@ export default function BoardPage() {
     if (!res.ok) {
       toast.error('Failed to update status');
       setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: oldStatus } : t));
+      setFilteredTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: oldStatus } : t));
     }
+  }
+
+  async function handleDeleteTask() {
+    if (!deleteTaskId) return;
+    setDeleteLoading(true);
+    const res = await fetch(`/api/tasks/${deleteTaskId}`, { method: 'DELETE' });
+    if (res.ok) {
+      toast.success('Task deleted');
+      setTasks((prev) => prev.filter((t) => t.id !== deleteTaskId));
+      setFilteredTasks((prev) => prev.filter((t) => t.id !== deleteTaskId));
+    } else {
+      toast.error('Failed to delete task');
+    }
+    setDeleteLoading(false);
+    setDeleteTaskId(null);
   }
 
   function openCreate(status: TaskStatus) {
@@ -158,12 +238,21 @@ export default function BoardPage() {
     setCreateOpen(true);
   }
 
-  if (loading) return <div className="p-4 md:p-6 lg:p-8"><Skeleton className="mb-6 h-8 w-48" /><div className="grid grid-cols-7 gap-3">{Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-96" />)}</div></div>;
+  if (loading) return (
+    <div className="p-4 md:p-6 lg:p-8">
+      <Skeleton className="mb-6 h-8 w-48" />
+      <div className="grid grid-cols-7 gap-3">
+        {Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-96" />)}
+      </div>
+    </div>
+  );
+
+  const taskToDelete = tasks.find((t) => t.id === deleteTaskId);
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
       {/* Header */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold tracking-tight">Kanban Board</h1>
           <div className="flex items-center gap-1.5 rounded-full bg-muted/60 px-2.5 py-1 text-xs font-medium">
@@ -181,8 +270,16 @@ export default function BoardPage() {
           </div>
         </div>
 
-        {/* Controls: Swimlanes & WIP Limits */}
+        {/* Controls */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Active filter badge */}
+          {activeFilterName && (
+            <div className="flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/20 px-2.5 py-1 text-xs font-medium text-primary">
+              <span>{activeFilterName}</span>
+              <button onClick={handleClearFilter} className="hover:text-destructive transition-colors ml-0.5">×</button>
+            </div>
+          )}
+
           {/* Swimlane selector */}
           <div className="flex items-center gap-1.5">
             <Layers className="h-4 w-4 text-muted-foreground" />
@@ -198,14 +295,13 @@ export default function BoardPage() {
             </Select>
           </div>
 
-          {/* Saved Filters Preset Dropdown */}
+          {/* Saved Filters — now actually wired */}
           <SavedFilters
-            onApplyFilter={(filters) => {
-              toast.info('Applied filter preset');
-            }}
+            onApplyFilter={(filters, name) => handleApplyFilter(filters, name)}
+            currentFilters={{}}
           />
 
-          {/* WIP Limits config popover */}
+          {/* WIP Limits config popover — only for eligible statuses */}
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="h-9 text-xs gap-1.5">
@@ -215,9 +311,10 @@ export default function BoardPage() {
             </PopoverTrigger>
             <PopoverContent className="w-64 p-3 text-xs space-y-3" align="end">
               <div className="font-semibold text-xs border-b pb-1">Work In Progress (WIP) Limits</div>
-              {TASK_STATUSES.map((status) => (
+              <p className="text-muted-foreground text-[11px]">Set limits for active workflow stages only.</p>
+              {WIP_ELIGIBLE_STATUSES.map((status) => (
                 <div key={status} className="flex items-center justify-between gap-2">
-                  <span className="capitalize text-muted-foreground">{status.replace('_', ' ')}:</span>
+                  <span className="capitalize text-muted-foreground">{status.replace(/_/g, ' ')}:</span>
                   <Input
                     type="number"
                     min={0}
@@ -230,11 +327,16 @@ export default function BoardPage() {
             </PopoverContent>
           </Popover>
 
+          <HelpPanel pageKey="board" />
+
           <Button onClick={() => openCreate('backlog')} className="h-9 text-xs gap-1.5">
             <Plus className="h-4 w-4" />New task
           </Button>
         </div>
       </div>
+
+      {/* Workflow Rules Banner */}
+      <WorkflowRules className="mb-5" />
 
       {/* Swimlane Groups / Kanban Grid */}
       <div className="space-y-6">
@@ -250,7 +352,7 @@ export default function BoardPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 overflow-x-auto pb-4">
+            <div className="flex gap-3 overflow-x-auto pb-4 min-h-[calc(100vh-360px)]">
               {TASK_STATUSES.map((status) => {
                 const meta = TASK_STATUS_META[status];
                 const colTasks = group.tasks.filter((t) => t.status === status);
@@ -263,8 +365,10 @@ export default function BoardPage() {
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => { e.preventDefault(); if (dragging) handleDrop(dragging, status); }}
                     className={cn(
-                      'flex flex-col rounded-xl p-2 min-w-[240px] transition-colors',
-                      isWipExceeded ? 'bg-rose-500/10 border border-rose-500/30' : 'bg-muted/40'
+                      'flex flex-col rounded-xl p-2 w-[260px] shrink-0 transition-colors',
+                      isWipExceeded
+                        ? 'bg-rose-500/10 border border-rose-500/30'
+                        : 'bg-muted/50 dark:bg-muted/40 border border-border/50'
                     )}
                   >
                     <div className="mb-2 flex items-center justify-between px-2 pt-1">
@@ -291,10 +395,10 @@ export default function BoardPage() {
                       </div>
                     )}
 
-                    <div className="flex-1 space-y-2 overflow-y-auto max-h-[calc(100vh-240px)] p-1">
+                    <div className="flex-1 space-y-2 overflow-y-auto max-h-[calc(100vh-340px)] p-1">
                       {colTasks.length === 0 ? (
                         <div className="flex h-20 items-center justify-center rounded-lg border border-dashed text-xs text-muted-foreground opacity-60">
-                          Empty
+                          Drop tasks here
                         </div>
                       ) : (
                         colTasks.map((t) => (
@@ -303,16 +407,57 @@ export default function BoardPage() {
                             layout
                             draggable
                             onDragStart={() => setDragging(t.id)}
-                            className={cn('cursor-grab active:cursor-grabbing', dragging === t.id && 'opacity-40')}
+                            className={cn('cursor-grab active:cursor-grabbing group relative', dragging === t.id && 'opacity-40')}
                           >
-                            <Card className="p-3 transition-shadow hover:shadow-md">
-                              <Link href={`/tasks/${t.id}`} className="block">
-                                <p className="font-medium text-sm hover:text-primary line-clamp-2">{t.title}</p>
-                              </Link>
-                              {t.project && <p className="mt-1 text-[10px] text-muted-foreground">{t.project.name}</p>}
+                            <Card className="p-3 transition-shadow hover:shadow-md dark:bg-card bg-white border">
+                              {/* Card header with context menu */}
+                              <div className="flex items-start justify-between gap-1 mb-1">
+                                <Link href={`/tasks/${t.id}`} className="block flex-1 min-w-0">
+                                  <p className="font-medium text-sm hover:text-primary line-clamp-2 leading-snug">
+                                    {t.title}
+                                  </p>
+                                </Link>
+
+                                {/* Context menu — always visible on hover */}
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity -mr-1 -mt-0.5"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <MoreVertical className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="text-xs w-36">
+                                    <DropdownMenuItem asChild>
+                                      <Link href={`/tasks/${t.id}`} className="flex items-center gap-2 cursor-pointer">
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                        Open Task
+                                      </Link>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive focus:text-destructive flex items-center gap-2 cursor-pointer"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeleteTaskId(t.id);
+                                      }}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                      Delete Task
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+
+                              {t.project && <p className="mt-0.5 text-[10px] text-muted-foreground">{t.project.name}</p>}
                               <div className="mt-3 flex items-center justify-between">
                                 <PriorityBadge priority={t.priority as any} />
-                                {t.assignees && t.assignees.length > 0 && <AvatarStack users={t.assignees} max={2} size="sm" />}
+                                {t.assignees && t.assignees.length > 0 && (
+                                  <AvatarStack users={t.assignees} max={2} size="sm" />
+                                )}
                               </div>
                             </Card>
                           </motion.div>
@@ -336,6 +481,30 @@ export default function BoardPage() {
         tags={tags}
         onSaved={fetchTasks}
       />
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={!!deleteTaskId} onOpenChange={(v) => { if (!v) setDeleteTaskId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Task</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete{' '}
+              <span className="font-semibold text-foreground">"{taskToDelete?.title}"</span>?
+              This action cannot be undone and will remove all comments, attachments, and time logs.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteTask}
+              disabled={deleteLoading}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteLoading ? 'Deleting...' : 'Delete Task'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

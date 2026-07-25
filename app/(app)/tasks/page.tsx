@@ -45,7 +45,7 @@ export default function TasksPage() {
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
-      <PageHeader title="My Tasks" description="Tasks assigned to you across all projects." />
+      <PageHeader title="My Tasks" description="Tasks assigned to you across all projects." helpKey="tasks" />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative max-w-xs flex-1">

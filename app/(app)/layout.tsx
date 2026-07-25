@@ -3,6 +3,7 @@
 import { RouteGuard } from '@/components/layout/route-guard';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
+import { WorkflowGuide } from '@/components/shared/workflow-guide';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -18,6 +19,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <main className="flex-1 overflow-x-hidden">{children}</main>
         </div>
       </div>
+      {/* Global first-visit workflow guide */}
+      <WorkflowGuide />
     </RouteGuard>
   );
 }

@@ -59,7 +59,7 @@ export default function DashboardPage() {
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
-      <PageHeader title={`Welcome back, ${profile?.full_name?.split(' ')[0] ?? 'there'}!`} description="Here's what's happening across your projects today." />
+      <PageHeader title={`Welcome back, ${profile?.full_name?.split(' ')[0] ?? 'there'}!`} description="Here's what's happening across your projects today." helpKey="dashboard" />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={FolderKanban} label="Total tasks" value={stats.total} />
