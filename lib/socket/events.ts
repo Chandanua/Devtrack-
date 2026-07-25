@@ -13,8 +13,10 @@ export const SOCKET_EVENTS = {
   TASK_UPDATED: 'task:updated',
   TASK_DELETED: 'task:deleted',
 
-  // Comments
+  // Comments & Typing
   COMMENT_CREATED: 'comment:created',
+  TYPING_START: 'typing:start',
+  TYPING_STOP: 'typing:stop',
 
   // Notifications
   NOTIFICATION_NEW: 'notification:new',

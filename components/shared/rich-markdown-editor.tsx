@@ -5,6 +5,7 @@ import { Bold, Italic, Code, List, Heading, Quote, Eye, Edit3 } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { MarkdownRenderer } from './markdown-renderer';
 
 interface RichMarkdownEditorProps {
   value: string;
@@ -12,6 +13,8 @@ interface RichMarkdownEditorProps {
   placeholder?: string;
   members?: Array<{ id: string; full_name: string; email: string }>;
   rows?: number;
+  onFocus?: () => void;
+  onBlur?: () => void;
 }
 
 export function RichMarkdownEditor({
@@ -20,6 +23,8 @@ export function RichMarkdownEditor({
   placeholder = 'Write task description or comment... (Markdown supported, use @ to mention)',
   members = [],
   rows = 4,
+  onFocus,
+  onBlur,
 }: RichMarkdownEditorProps) {
   const [tab, setTab] = useState<'edit' | 'preview'>('edit');
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -59,32 +64,6 @@ export function RichMarkdownEditor({
     const newValue = value.substring(0, start) + `@${name} ` + value.substring(start);
     onChange(newValue);
     setMentionQuery(null);
-  };
-
-  // Simple clean markdown parser for live preview
-  const renderMarkdown = (text: string) => {
-    if (!text.trim()) return <p className="text-muted-foreground italic text-xs">Nothing to preview</p>;
-
-    const lines = text.split('\n');
-    return (
-      <div className="space-y-1.5 text-xs text-foreground/90 leading-relaxed">
-        {lines.map((line, idx) => {
-          if (line.startsWith('# ')) return <h1 key={idx} className="text-base font-bold">{line.slice(2)}</h1>;
-          if (line.startsWith('## ')) return <h2 key={idx} className="text-sm font-bold">{line.slice(3)}</h2>;
-          if (line.startsWith('- ') || line.startsWith('* ')) {
-            return (
-              <li key={idx} className="ml-4 list-disc">
-                {line.slice(2)}
-              </li>
-            );
-          }
-          if (line.startsWith('> ')) return <blockquote key={idx} className="border-l-2 border-primary/50 pl-2 italic text-muted-foreground">{line.slice(2)}</blockquote>;
-          if (line.startsWith('```')) return <pre key={idx} className="rounded bg-muted p-2 font-mono text-[11px] overflow-x-auto">{line.replace(/```/g, '')}</pre>;
-          
-          return <p key={idx}>{line}</p>;
-        })}
-      </div>
-    );
   };
 
   return (
@@ -188,13 +167,15 @@ export function RichMarkdownEditor({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
+            onFocus={onFocus}
+            onBlur={onBlur}
             placeholder={placeholder}
             rows={rows}
             className="border-0 focus-visible:ring-0 resize-y p-3 text-xs font-mono"
           />
         ) : (
           <div className="p-3 min-h-[100px] max-h-[300px] overflow-y-auto bg-muted/10">
-            {renderMarkdown(value)}
+            <MarkdownRenderer content={value} />
           </div>
         )}
 

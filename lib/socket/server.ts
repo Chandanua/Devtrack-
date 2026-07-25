@@ -96,6 +96,25 @@ export function initSocketServer(server: HTTPServer): SocketIOServer {
       socket.leave(`task:${taskId}`);
     });
 
+    // Typing start indicator
+    socket.on(SOCKET_EVENTS.TYPING_START, ({ taskId }: { taskId: string }) => {
+      if (!taskId) return;
+      socket.to(`task:${taskId}`).emit(SOCKET_EVENTS.TYPING_START, {
+        taskId,
+        userId: user.userId,
+        fullName: user.fullName,
+      });
+    });
+
+    // Typing stop indicator
+    socket.on(SOCKET_EVENTS.TYPING_STOP, ({ taskId }: { taskId: string }) => {
+      if (!taskId) return;
+      socket.to(`task:${taskId}`).emit(SOCKET_EVENTS.TYPING_STOP, {
+        taskId,
+        userId: user.userId,
+      });
+    });
+
     socket.on('disconnect', () => {
       const active = activeUsers.get(socket.id);
       if (active) {

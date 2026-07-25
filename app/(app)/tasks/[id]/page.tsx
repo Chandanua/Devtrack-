@@ -24,6 +24,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { PriorityBadge, StatusBadge, TagChip } from '@/components/shared/badges';
 import { RichMarkdownEditor } from '@/components/shared/rich-markdown-editor';
+import { MarkdownRenderer } from '@/components/shared/markdown-renderer';
 import { GitHubLinksCard } from '@/components/tasks/github-links-card';
 import { AvatarStack, SingleAvatar } from '@/components/shared/avatar-stack';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -54,6 +55,7 @@ export default function TaskDetailPage() {
   const [members, setMembers] = useState<any[]>([]);
   const [tags, setTags] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
 
   const fetchTask = useCallback(async () => {
     const res = await fetch(`/api/tasks/${taskId}`);
@@ -88,7 +90,7 @@ export default function TaskDetailPage() {
 
   useEffect(() => { fetchTask(); fetchComments(); fetchActivity(); checkTimer(); }, [fetchTask, fetchComments, fetchActivity, checkTimer]);
 
-  // Join task room for live comments and updates
+  // Join task room for live comments, updates, and typing indicators
   useEffect(() => {
     if (!taskId) return;
     joinTask(taskId);
@@ -101,15 +103,34 @@ export default function TaskDetailPage() {
         });
       };
 
+      const handleTypingStart = ({ userId, fullName }: { userId: string; fullName: string }) => {
+        if (userId !== user?.id) {
+          setTypingUsers((prev) => new Map(prev).set(userId, fullName));
+        }
+      };
+
+      const handleTypingStop = ({ userId }: { userId: string }) => {
+        setTypingUsers((prev) => {
+          const next = new Map(prev);
+          next.delete(userId);
+          return next;
+        });
+      };
+
       socket.on(SOCKET_EVENTS.COMMENT_CREATED, handleNewComment);
+      socket.on(SOCKET_EVENTS.TYPING_START, handleTypingStart);
+      socket.on(SOCKET_EVENTS.TYPING_STOP, handleTypingStop);
+
       return () => {
         socket.off(SOCKET_EVENTS.COMMENT_CREATED, handleNewComment);
+        socket.off(SOCKET_EVENTS.TYPING_START, handleTypingStart);
+        socket.off(SOCKET_EVENTS.TYPING_STOP, handleTypingStop);
         leaveTask(taskId);
       };
     }
 
     return () => { leaveTask(taskId); };
-  }, [taskId, socket, joinTask, leaveTask]);
+  }, [taskId, socket, joinTask, leaveTask, user?.id]);
   useEffect(() => {
     Promise.all([fetch('/api/projects'), fetch('/api/members'), fetch('/api/tags')]).then(async ([p, m, t]) => {
       if (p.ok) setProjects(await p.json());
@@ -248,7 +269,11 @@ export default function TaskDetailPage() {
                 {task.project && <Link href={`/projects/${task.project.id}`} className="text-sm text-muted-foreground hover:text-primary">{task.project.name}</Link>}
               </div>
               <h1 className="mt-3 text-2xl font-bold tracking-tight">{task.title}</h1>
-              {task.description && <p className="mt-2 text-sm text-muted-foreground">{task.description}</p>}
+              {task.description && (
+                <div className="mt-3 rounded-lg bg-muted/30 p-3 border">
+                  <MarkdownRenderer content={task.description} />
+                </div>
+              )}
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 {task.tags?.map((tag) => <TagChip key={tag.id} name={tag.name} color={tag.color} />)}
               </div>
@@ -322,7 +347,9 @@ export default function TaskDetailPage() {
                       <span className="text-sm font-medium">{c.author?.full_name ?? 'Unknown'}</span>
                       <span className="text-xs text-muted-foreground">{formatRelativeTime(c.created_at)}</span>
                     </div>
-                    <p className="mt-1 whitespace-pre-wrap text-sm">{c.body}</p>
+                    <div className="mt-1">
+                      <MarkdownRenderer content={c.body} />
+                    </div>
                     <div className="mt-2 flex items-center gap-1">
                       {(c.reactions ?? []).reduce((acc: { emoji: string; count: number }[], r: { emoji: string }) => { const ex = acc.find((a) => a.emoji === r.emoji); if (ex) ex.count++; else acc.push({ emoji: r.emoji, count: 1 }); return acc; }, []).map((r: { emoji: string; count: number }) => (
                         <span key={r.emoji} className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs">{r.emoji} {r.count}</span>
@@ -336,6 +363,17 @@ export default function TaskDetailPage() {
                 </div>
               </Card>
             ))}
+
+            {/* Live Typing Banner */}
+            {typingUsers.size > 0 && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse italic px-1">
+                <div className="flex gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary animate-ping" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                </div>
+                <span>{Array.from(typingUsers.values()).join(', ')} {typingUsers.size === 1 ? 'is' : 'are'} typing a comment...</span>
+              </div>
+            )}
             <div className="flex items-start gap-3">
               <SingleAvatar user={{ id: user?.id ?? '', full_name: user?.email ?? 'You', avatar_url: null }} size="sm" />
               <div className="flex-1">

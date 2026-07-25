@@ -36,6 +36,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SprintDialog } from '@/components/sprints/sprint-dialog';
+import { SprintBurndownChart, SprintBurnupChart } from '@/components/sprints/sprint-charts';
 import { cn } from '@/lib/utils';
 
 export default function ReportsPage() {
@@ -215,6 +216,22 @@ export default function ReportsPage() {
                 )}
               </div>
             </Card>
+          </div>
+
+          {/* Interactive Burndown & Burnup Analytics */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <SprintBurndownChart
+              sprintName={analytics?.activeSprint?.name || 'Active Sprint'}
+              startDate={analytics?.activeSprint?.start_date}
+              endDate={analytics?.activeSprint?.end_date}
+              tasks={tasks}
+            />
+            <SprintBurnupChart
+              sprintName={analytics?.activeSprint?.name || 'Active Sprint'}
+              startDate={analytics?.activeSprint?.start_date}
+              endDate={analytics?.activeSprint?.end_date}
+              tasks={tasks}
+            />
           </div>
         </TabsContent>
 

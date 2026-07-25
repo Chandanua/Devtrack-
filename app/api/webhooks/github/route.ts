@@ -29,6 +29,18 @@ function extractTaskIds(text: string): string[] {
   return Array.from(new Set(matches));
 }
 
+// Extract task IDs that have action keywords (fixes #id, closes #id, resolves #id)
+function extractClosingTaskIds(text: string): string[] {
+  if (!text) return [];
+  const regex = /(?:fixes|fix|fixed|closes|close|closed|resolves|resolve|resolved)\s+#?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/gi;
+  const closingIds: string[] = [];
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    if (match[1]) closingIds.push(match[1]);
+  }
+  return Array.from(new Set(closingIds));
+}
+
 export async function POST(request: Request) {
   try {
     const rawBody = await request.text();
@@ -44,6 +56,80 @@ export async function POST(request: Request) {
 
     if (event === 'ping') {
       return NextResponse.json({ message: 'GitHub webhook ping received successfully' });
+    }
+
+    if (event === 'push') {
+      const { commits, repository, pusher } = payload;
+      const commitsList = commits || [];
+      const updatedTasks: string[] = [];
+      const processedTasks = new Set<string>();
+
+      for (const commit of commitsList) {
+        const message = commit.message || '';
+        const authorName = commit.author?.name || pusher?.name || 'GitHub User';
+        const taskIds = extractTaskIds(message);
+        const closingTaskIds = new Set(extractClosingTaskIds(message));
+
+        for (const taskId of taskIds) {
+          processedTasks.add(taskId);
+          const task = await prisma.task.findUnique({
+            where: { id: taskId },
+            include: { project: true },
+          });
+          if (!task) continue;
+
+          const isClosing = closingTaskIds.has(taskId);
+          const newStatus = isClosing ? 'completed' : null;
+
+          if (newStatus && task.status !== 'completed') {
+            const updated = await prisma.task.update({
+              where: { id: taskId },
+              data: { status: 'completed' },
+            });
+
+            await prisma.activityLog.create({
+              data: {
+                task_id: taskId,
+                user_id: task.created_by,
+                action: 'github_commit_auto_close',
+                metadata: {
+                  commit_id: commit.id,
+                  commit_message: message,
+                  author: authorName,
+                  commit_url: commit.url,
+                },
+              },
+            });
+
+            const fullTask = await prisma.task.findUnique({
+              where: { id: taskId },
+              include: {
+                project: { select: { id: true, name: true, org_id: true } },
+                assignees: { include: { profile: true } },
+                tags: { include: { tag: true } },
+                _count: { select: { comments: true, subtasks: true, attachments: true, assignees: true } },
+              },
+            });
+
+            if (fullTask) {
+              const mapped = {
+                ...fullTask,
+                assignees: fullTask.assignees.map((a) => a.profile),
+                tags: fullTask.tags.map((tt) => tt.tag),
+              };
+              emitToOrg(task.project.org_id, SOCKET_EVENTS.TASK_UPDATED, mapped);
+            }
+
+            updatedTasks.push(updated.id);
+          }
+        }
+      }
+
+      return NextResponse.json({
+        message: 'GitHub Push event processed',
+        processed_tasks: Array.from(processedTasks),
+        updated_tasks: updatedTasks,
+      });
     }
 
     if (event === 'pull_request') {
@@ -67,6 +153,7 @@ export async function POST(request: Request) {
       // Find referenced task IDs from title, body, and branch
       const searchText = `${prTitle} ${prBody} ${branchName}`;
       const taskIds = extractTaskIds(searchText);
+      const closingTaskIds = new Set(extractClosingTaskIds(searchText));
 
       if (taskIds.length === 0) {
         return NextResponse.json({ message: 'No DevTrack task IDs referenced in PR' });
@@ -110,9 +197,11 @@ export async function POST(request: Request) {
           },
         });
 
-        // Determine new task status
+        // Determine new task status (support smart keywords auto-closing or merged PR)
         let newStatus: string | null = null;
-        if (action === 'opened' || action === 'reopened') {
+        if (closingTaskIds.has(taskId) && (isMerged || action === 'opened')) {
+          newStatus = isMerged ? 'completed' : 'code_review';
+        } else if (action === 'opened' || action === 'reopened') {
           newStatus = 'code_review';
         } else if (action === 'closed' && isMerged) {
           newStatus = 'completed';
