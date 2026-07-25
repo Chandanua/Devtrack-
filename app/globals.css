@@ -181,3 +181,44 @@
 
 /* Sidebar uses CSS vars — light/dark adapts via :root vs .dark */
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Paint-Reveal Theme Transition
+   Uses the View Transitions API. The new theme "paints" over the old one
+   as a circle expanding from the exact pixel where the user clicked the
+   theme toggle button.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Old snapshot stays pinned beneath — no animation, just sits still */
+::view-transition-old(root) {
+  animation: none;
+  mix-blend-mode: normal;
+  z-index: 1;
+}
+
+/* New theme paints over it as an expanding ink circle */
+::view-transition-new(root) {
+  animation: paint-spread 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+  mix-blend-mode: normal;
+  z-index: 2;
+}
+
+@keyframes paint-spread {
+  from {
+    /* starts as a single dot at the click position */
+    clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%));
+  }
+  to {
+    /* expands to cover the entire viewport diagonally */
+    clip-path: circle(200vmax at var(--vt-x, 50%) var(--vt-y, 50%));
+  }
+}
+
+/* When switching TO dark — the dark wash is extra dramatic */
+[data-theme-direction="to-dark"]::view-transition-new(root) {
+  animation-duration: 0.7s;
+}
+
+/* When switching TO light — slightly faster, feels like sunlight flooding in */
+[data-theme-direction="to-light"]::view-transition-new(root) {
+  animation-duration: 0.55s;
+}
