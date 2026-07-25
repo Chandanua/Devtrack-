@@ -45,7 +45,7 @@ export function Sidebar({ onItemClick }: { onItemClick?: () => void }) {
   const visibleItems = navItems.filter((item) => !item.managerOnly || isManager);
 
   return (
-    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
+    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground border-r" style={{ borderColor: 'hsl(var(--sidebar-border))' }}>
       <div className="px-3 pt-4 pb-2">
         <OrgSwitcher />
       </div>
@@ -80,7 +80,7 @@ export function Sidebar({ onItemClick }: { onItemClick?: () => void }) {
         })}
       </nav>
 
-      <div className="border-t border-sidebar px-3 py-4">
+      <div className="border-t border-sidebar px-3 py-4" style={{ borderColor: 'hsl(var(--sidebar-border))' }}>
         <UserMenu />
       </div>
     </div>

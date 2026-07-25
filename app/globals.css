@@ -29,12 +29,12 @@
     --border: 214 20% 90%;
     --input: 214 20% 90%;
     --ring: 199 89% 48%;
-    --sidebar: 222 47% 12%;
-    --sidebar-foreground: 210 20% 90%;
-    --sidebar-muted: 222 30% 22%;
-    --sidebar-muted-foreground: 215 15% 60%;
-    --sidebar-accent: 222 35% 20%;
-    --sidebar-border: 222 25% 22%;
+    --sidebar: 220 20% 97%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-muted: 220 14% 93%;
+    --sidebar-muted-foreground: 215 16% 46%;
+    --sidebar-accent: 199 89% 92%;
+    --sidebar-border: 214 20% 88%;
     --chart-1: 199 89% 48%;
     --chart-2: 160 84% 39%;
     --chart-3: 38 92% 50%;
@@ -128,6 +128,9 @@
   .bg-sidebar-accent {
     background-color: hsl(var(--sidebar-accent));
   }
+  .text-sidebar-accent-foreground {
+    color: hsl(var(--primary));
+  }
   .border-sidebar {
     border-color: hsl(var(--sidebar-border));
   }
@@ -149,6 +152,14 @@
   .text-info {
     color: hsl(var(--info));
   }
+
+  /* Sidebar hover utilities */
+  .hover\:bg-sidebar-accent:hover {
+    background-color: hsl(var(--sidebar-accent));
+  }
+  .hover\:text-sidebar-foreground:hover {
+    color: hsl(var(--sidebar-foreground));
+  }
 }
 
 .kanban-card-dragging {
@@ -168,9 +179,5 @@
   box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
 }
 
-/* Ensure sidebar always stays dark regardless of theme */
-.sidebar-dark {
-  background-color: hsl(var(--sidebar));
-  color: hsl(var(--sidebar-foreground));
-}
+/* Sidebar uses CSS vars — light/dark adapts via :root vs .dark */
 
