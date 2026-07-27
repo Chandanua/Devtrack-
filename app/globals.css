@@ -182,29 +182,15 @@
 /* Sidebar uses CSS vars — light/dark adapts via :root vs .dark */
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Painter Bot Top-Left Sweep Theme Transition
-   The new theme color paints out from Top-Left (0% 0%) across the viewport
-   following the Painter Bot animation after a ~0.5s delay.
+   Theme Switcher Transition Base
    ───────────────────────────────────────────────────────────────────────── */
 
-::view-transition-old(root) {
+::view-transition-old(root),
+::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
-  z-index: 1;
 }
 
-::view-transition-new(root) {
-  animation: paint-sweep-topleft 0.75s cubic-bezier(0.25, 1, 0.5, 1) 0.45s both;
-  mix-blend-mode: normal;
-  z-index: 2;
-}
 
-@keyframes paint-sweep-topleft {
-  from {
-    clip-path: circle(0px at 0% 0%);
-  }
-  to {
-    clip-path: circle(250vmax at 0% 0%);
-  }
-}
+
 

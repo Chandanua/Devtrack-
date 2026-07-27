@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const tokenData = await exchangeGoogleCode(code);
+    const tokenData = await exchangeGoogleCode(code, request.url);
     if (!tokenData.access_token) {
       return NextResponse.redirect(new URL('/login?error=token_failed', request.url));
     }

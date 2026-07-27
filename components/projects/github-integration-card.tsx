@@ -60,7 +60,7 @@ export function GithubIntegrationCard() {
             <p className="text-amber-700/80 dark:text-amber-500/80">
               Set <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 py-0.5 rounded">GITHUB_WEBHOOK_SECRET</code> in your{' '}
               <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 py-0.5 rounded">.env</code> file (never <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 py-0.5 rounded">NEXT_PUBLIC_</code>).
-              Copy the same value into your GitHub webhook settings under "Secret".
+              Copy the same value into your GitHub webhook settings under &quot;Secret&quot;.
             </p>
           </div>
         </div>

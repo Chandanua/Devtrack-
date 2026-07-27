@@ -1,12 +1,19 @@
 import { SignJWT, jwtVerify, type JWTPayload } from 'jose';
 
-const secret = new TextEncoder().encode(process.env.JWT_SECRET ?? 'fallback-secret-change-me');
+function getJwtSecret(): Uint8Array {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    throw new Error('CRITICAL SECURITY ERROR: JWT_SECRET environment variable is missing.');
+  }
+  return new TextEncoder().encode(jwtSecret);
+}
 
 export interface TokenPayload extends JWTPayload {
   userId: string;
 }
 
 export async function signToken(userId: string): Promise<string> {
+  const secret = getJwtSecret();
   const expiresIn = process.env.JWT_EXPIRES_IN ?? '7d';
   const token = await new SignJWT({ userId })
     .setProtectedHeader({ alg: 'HS256' })
@@ -18,6 +25,7 @@ export async function signToken(userId: string): Promise<string> {
 
 export async function verifyToken(token: string): Promise<TokenPayload | null> {
   try {
+    const secret = getJwtSecret();
     const { payload } = await jwtVerify(token, secret);
     return payload as TokenPayload;
   } catch {

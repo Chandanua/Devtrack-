@@ -5,7 +5,13 @@ import type { TaskStatus } from '@prisma/client';
 import { emitToOrg, emitToUser } from '@/lib/socket/server';
 import { SOCKET_EVENTS } from '@/lib/socket/events';
 
-const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET || 'devtrack_webhook_secret_key_123';
+function getWebhookSecret(): string {
+  const secret = process.env.GITHUB_WEBHOOK_SECRET;
+  if (!secret) {
+    throw new Error('CRITICAL SECURITY ERROR: GITHUB_WEBHOOK_SECRET environment variable is missing.');
+  }
+  return secret;
+}
 
 function verifySignature(payloadText: string, signatureHeader: string | null): boolean {
   if (!signatureHeader) return false;
@@ -13,7 +19,7 @@ function verifySignature(payloadText: string, signatureHeader: string | null): b
   if (!signatureHeader.startsWith(sha256Prefix)) return false;
 
   const sigHex = signatureHeader.slice(sha256Prefix.length);
-  const hmac = crypto.createHmac('sha256', WEBHOOK_SECRET);
+  const hmac = crypto.createHmac('sha256', getWebhookSecret());
   const digest = Buffer.from(hmac.update(payloadText).digest('hex'), 'utf8');
   const checksum = Buffer.from(sigHex, 'utf8');
 

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireOrgAccess } from '@/lib/auth/get-org';
+import { can } from '@/lib/auth/roles';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const access = await requireOrgAccess();
@@ -27,6 +28,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const access = await requireOrgAccess();
   if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  if (!can(access.role, 'manage_sprints')) {
+    return NextResponse.json({ error: 'Forbidden: Insufficient permissions' }, { status: 403 });
+  }
+
   const { id } = await params;
 
   const existing = await prisma.sprint.findFirst({
@@ -57,6 +63,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const access = await requireOrgAccess();
   if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  if (!can(access.role, 'manage_sprints')) {
+    return NextResponse.json({ error: 'Forbidden: Insufficient permissions' }, { status: 403 });
+  }
+
   const { id } = await params;
 
   const existing = await prisma.sprint.findFirst({

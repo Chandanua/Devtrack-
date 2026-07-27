@@ -253,7 +253,7 @@ export function WorkflowGuide({ forceOpen, onClose }: WorkflowGuideProps) {
               className="h-3.5 w-3.5 accent-primary"
             />
             <label htmlFor="dont-show" className="text-xs text-muted-foreground cursor-pointer select-none">
-              Don't show again
+              Don&apos;t show again
             </label>
           </div>
 

@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireOrgAccess } from '@/lib/auth/get-org';
+import { can } from '@/lib/auth/roles';
 
 export async function GET(request: Request) {
   const access = await requireOrgAccess();
   if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  if (!can(access.role, 'view_all_reports') && !can(access.role, 'view_team_reports')) {
+    return NextResponse.json({ error: 'Forbidden: Insufficient permissions' }, { status: 403 });
+  }
 
   const url = new URL(request.url);
   const sprintId = url.searchParams.get('sprintId');

@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { getUserId } from '@/lib/auth/get-user';
+import type { OrgRole } from '@prisma/client';
 
 const ORG_COOKIE = 'devtrack-org';
 
@@ -50,17 +51,33 @@ export async function getOrgRole(orgId?: string): Promise<string | null> {
 }
 
 /**
- * Verify that the authenticated user is a member of the given org.
- * Returns { userId, orgId } or null if unauthorized.
+ * Verify that the authenticated user is a member of the active org.
+ * Returns { userId, orgId, role } or null if unauthorized.
  */
-export async function requireOrgAccess(): Promise<{ userId: string; orgId: string } | null> {
+export async function requireOrgAccess(): Promise<{ userId: string; orgId: string; role: OrgRole } | null> {
   const userId = await getUserId();
   if (!userId) return null;
 
-  const orgId = await getOrgId();
-  if (!orgId) return null;
+  const cookieStore = await cookies();
+  const orgIdFromCookie = cookieStore.get(ORG_COOKIE)?.value;
 
-  return { userId, orgId };
+  let membership = null;
+  if (orgIdFromCookie) {
+    membership = await prisma.orgMembership.findUnique({
+      where: { org_id_user_id: { org_id: orgIdFromCookie, user_id: userId } },
+    });
+  }
+
+  if (!membership) {
+    membership = await prisma.orgMembership.findFirst({
+      where: { user_id: userId },
+      orderBy: { created_at: 'asc' },
+    });
+  }
+
+  if (!membership) return null;
+
+  return { userId, orgId: membership.org_id, role: membership.role };
 }
 
 export { ORG_COOKIE };

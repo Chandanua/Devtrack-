@@ -1,12 +1,26 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getUserId } from '@/lib/auth/get-user';
+import { requireOrgAccess } from '@/lib/auth/get-org';
+import { canEdit } from '@/lib/auth/roles';
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const userId = await getUserId();
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const access = await requireOrgAccess();
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  if (!canEdit(access.role)) {
+    return NextResponse.json({ error: 'Forbidden: Insufficient permissions' }, { status: 403 });
+  }
+
   const { id: taskId } = await params;
-  const { action } = await req.json(); // 'start' | 'stop'
+
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, project: { org_id: access.orgId } },
+    select: { id: true },
+  });
+  if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+
+  const userId = access.userId;
+  const { action } = await req.json(); // 'start' | 'stop' | 'check'
 
   if (action === 'start') {
     // Check for existing active timer

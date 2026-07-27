@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireOrgAccess } from '@/lib/auth/get-org';
+import { can } from '@/lib/auth/roles';
 
 export async function GET() {
   const access = await requireOrgAccess();
@@ -17,6 +18,10 @@ export async function GET() {
 export async function POST(request: Request) {
   const access = await requireOrgAccess();
   if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  if (!can(access.role, 'create_project')) {
+    return NextResponse.json({ error: 'Forbidden: Insufficient permissions' }, { status: 403 });
+  }
 
   try {
     const body = await request.json();

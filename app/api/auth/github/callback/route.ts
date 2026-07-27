@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Exchange code for access token
-    const tokenData = await exchangeGitHubCode(code);
+    const tokenData = await exchangeGitHubCode(code, request.url);
     if (!tokenData.access_token) {
       return NextResponse.redirect(new URL('/login?error=token_failed', request.url));
     }

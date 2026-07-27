@@ -1,8 +1,9 @@
 'use client';
 
 import { useTheme } from 'next-themes';
-import { Moon, Sun, Bot, Paintbrush } from 'lucide-react';
+import { Moon, Sun } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 
@@ -10,7 +11,7 @@ export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [isPainting, setIsPainting] = useState(false);
-  const [paintTheme, setPaintTheme] = useState<'light' | 'dark'>('dark');
+  const [targetTheme, setTargetTheme] = useState<'light' | 'dark'>('dark');
 
   useEffect(() => setMounted(true), []);
 
@@ -18,28 +19,18 @@ export function ThemeToggle() {
     if (isPainting) return;
 
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
-    setPaintTheme(nextTheme);
+    setTargetTheme(nextTheme);
     setIsPainting(true);
 
-    // 0.45s (~1/2 sec) delay before painting the screen from top-left
+    // Swap actual theme at 280ms when paint brush strokes meet in the middle
     setTimeout(() => {
-      if (
-        typeof document !== 'undefined' &&
-        'startViewTransition' in document &&
-        !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      ) {
-        (document as any).startViewTransition(() => {
-          setTheme(nextTheme);
-        });
-      } else {
-        setTheme(nextTheme);
-      }
-    }, 450);
+      setTheme(nextTheme);
+    }, 280);
 
-    // End painting animation overlay
+    // Unmount overlay after complete 0.5s (500ms) paint brush sweep
     setTimeout(() => {
       setIsPainting(false);
-    }, 1300);
+    }, 500);
   }, [theme, setTheme, isPainting]);
 
   if (!mounted) {
@@ -49,6 +40,9 @@ export function ThemeToggle() {
       </Button>
     );
   }
+
+  const bgColor = targetTheme === 'dark' ? '#090d16' : '#f8fafc';
+  const strokeColor = targetTheme === 'dark' ? '#1e293b' : '#cbd5e1';
 
   return (
     <>
@@ -67,34 +61,84 @@ export function ThemeToggle() {
         )}
       </Button>
 
-      {/* Painter Bot Screen-Swipe Overlay */}
-      <AnimatePresence>
-        {isPainting && (
-          <div className="fixed inset-0 z-[99999] pointer-events-none overflow-hidden">
-            {/* Painter Bot flying from top-left (0,0) to bottom-right (100vw, 100vh) */}
-            <motion.div
-              initial={{ x: '-10vw', y: '-10vh', scale: 0.8, rotate: -15 }}
-              animate={{
-                x: ['-5vw', '30vw', '70vw', '110vw'],
-                y: ['-5vh', '35vh', '75vh', '115vh'],
-                scale: [0.9, 1.15, 1.1, 0.9],
-                rotate: [-15, 5, -5, 15],
-              }}
-              transition={{
-                duration: 1.15,
-                ease: [0.25, 1, 0.5, 1],
-              }}
-              className="absolute top-0 left-0 flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-4 py-2 shadow-2xl border border-white/20"
-            >
-              <Bot className="h-6 w-6 animate-bounce" />
-              <Paintbrush className="h-5 w-5 text-amber-300 animate-spin" />
-              <span className="text-xs font-bold whitespace-nowrap">
-                Painting {paintTheme === 'dark' ? 'Dark' : 'Light'} Mode...
-              </span>
-            </motion.div>
-          </div>
+      {/* Render painter brush overlay at document.body */}
+      {isPainting &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <AnimatePresence>
+            <div className="fixed inset-0 z-[9999999] pointer-events-none overflow-hidden select-none">
+              {/* Brush Stroke Layer 1 (Top Band - sweeps left to right) */}
+              <motion.div
+                initial={{ scaleX: 0, originX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                className="absolute top-0 left-0 right-0 h-[38vh] shadow-2xl"
+                style={{
+                  backgroundColor: bgColor,
+                  clipPath:
+                    'polygon(0 0, 100% 0, 100% 86%, 94% 98%, 82% 88%, 68% 99%, 54% 87%, 38% 98%, 22% 88%, 8% 97%, 0 86%)',
+                }}
+              >
+                {/* Paint bristle texture */}
+                <div
+                  className="absolute inset-0 opacity-25"
+                  style={{
+                    backgroundImage: `repeating-linear-gradient(90deg, ${strokeColor} 0px, transparent 2px, transparent 8px)`,
+                  }}
+                />
+              </motion.div>
+
+              {/* Brush Stroke Layer 2 (Middle Band - sweeps right to left with slight delay) */}
+              <motion.div
+                initial={{ scaleX: 0, originX: 1 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 0.3, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
+                className="absolute top-[28vh] left-0 right-0 h-[44vh] shadow-2xl"
+                style={{
+                  backgroundColor: bgColor,
+                  clipPath:
+                    'polygon(0 12%, 8% 1%, 22% 11%, 38% 2%, 52% 10%, 68% 1%, 82% 9%, 94% 2%, 100% 11%, 100% 89%, 92% 99%, 78% 88%, 62% 98%, 48% 87%, 32% 99%, 18% 88%, 4% 98%, 0 87%)',
+                }}
+              >
+                <div
+                  className="absolute inset-0 opacity-25"
+                  style={{
+                    backgroundImage: `repeating-linear-gradient(90deg, ${strokeColor} 0px, transparent 2px, transparent 6px)`,
+                  }}
+                />
+              </motion.div>
+
+              {/* Brush Stroke Layer 3 (Bottom Band - sweeps left to right with delay) */}
+              <motion.div
+                initial={{ scaleX: 0, originX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 0.32, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
+                className="absolute top-[62vh] left-0 right-0 bottom-0 shadow-2xl"
+                style={{
+                  backgroundColor: bgColor,
+                  clipPath:
+                    'polygon(0 10%, 12% 1%, 25% 10%, 40% 2%, 55% 9%, 70% 1%, 85% 10%, 96% 2%, 100% 9%, 100% 100%, 0 100%)',
+                }}
+              >
+                <div
+                  className="absolute inset-0 opacity-25"
+                  style={{
+                    backgroundImage: `repeating-linear-gradient(90deg, ${strokeColor} 0px, transparent 2px, transparent 7px)`,
+                  }}
+                />
+              </motion.div>
+
+              {/* Wet Paint Gloss Sheen Streak sweeping across */}
+              <motion.div
+                initial={{ translateX: '-100%' }}
+                animate={{ translateX: '250%' }}
+                transition={{ duration: 0.45, ease: 'easeInOut' }}
+                className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12"
+              />
+            </div>
+          </AnimatePresence>,
+          document.body
         )}
-      </AnimatePresence>
     </>
   );
 }

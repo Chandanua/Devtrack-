@@ -19,22 +19,35 @@ export const GOOGLE_CONFIG = {
   scopes: ['openid', 'email', 'profile'],
 };
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+export function getBaseUrl(requestUrl?: string): string {
+  if (requestUrl) {
+    try {
+      const url = new URL(requestUrl);
+      return url.origin.replace(/\/+$/, '');
+    } catch {
+      // Fallback
+    }
+  }
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  return appUrl.replace(/\/+$/, '');
+}
 
-export function getGitHubAuthUrl(state: string): string {
+export function getGitHubAuthUrl(state: string, baseUrl?: string): string {
+  const base = getBaseUrl(baseUrl);
   const params = new URLSearchParams({
     client_id: GITHUB_CONFIG.clientId,
-    redirect_uri: `${APP_URL}/api/auth/github/callback`,
+    redirect_uri: `${base}/api/auth/github/callback`,
     scope: GITHUB_CONFIG.scopes.join(' '),
     state,
   });
   return `${GITHUB_CONFIG.authorizeUrl}?${params}`;
 }
 
-export function getGoogleAuthUrl(state: string): string {
+export function getGoogleAuthUrl(state: string, baseUrl?: string): string {
+  const base = getBaseUrl(baseUrl);
   const params = new URLSearchParams({
     client_id: GOOGLE_CONFIG.clientId,
-    redirect_uri: `${APP_URL}/api/auth/google/callback`,
+    redirect_uri: `${base}/api/auth/google/callback`,
     response_type: 'code',
     scope: GOOGLE_CONFIG.scopes.join(' '),
     state,
@@ -44,7 +57,8 @@ export function getGoogleAuthUrl(state: string): string {
   return `${GOOGLE_CONFIG.authorizeUrl}?${params}`;
 }
 
-export async function exchangeGitHubCode(code: string): Promise<{ access_token: string }> {
+export async function exchangeGitHubCode(code: string, baseUrl?: string): Promise<{ access_token: string }> {
+  const base = getBaseUrl(baseUrl);
   const res = await fetch(GITHUB_CONFIG.tokenUrl, {
     method: 'POST',
     headers: {
@@ -55,7 +69,7 @@ export async function exchangeGitHubCode(code: string): Promise<{ access_token: 
       client_id: GITHUB_CONFIG.clientId,
       client_secret: GITHUB_CONFIG.clientSecret,
       code,
-      redirect_uri: `${APP_URL}/api/auth/github/callback`,
+      redirect_uri: `${base}/api/auth/github/callback`,
     }),
   });
   return res.json();
@@ -83,7 +97,8 @@ export async function getGitHubEmails(accessToken: string): Promise<
   return res.json();
 }
 
-export async function exchangeGoogleCode(code: string): Promise<{ access_token: string }> {
+export async function exchangeGoogleCode(code: string, baseUrl?: string): Promise<{ access_token: string }> {
+  const base = getBaseUrl(baseUrl);
   const res = await fetch(GOOGLE_CONFIG.tokenUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -92,7 +107,7 @@ export async function exchangeGoogleCode(code: string): Promise<{ access_token: 
       client_secret: GOOGLE_CONFIG.clientSecret,
       code,
       grant_type: 'authorization_code',
-      redirect_uri: `${APP_URL}/api/auth/google/callback`,
+      redirect_uri: `${base}/api/auth/google/callback`,
     }),
   });
   return res.json();

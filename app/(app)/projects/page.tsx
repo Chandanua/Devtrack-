@@ -223,7 +223,7 @@ export default function ProjectsPage() {
             <AlertDialogTitle>Delete Project</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete{' '}
-              <span className="font-semibold text-foreground">"{projectToDelete?.name}"</span>?
+              <span className="font-semibold text-foreground">&quot;{projectToDelete?.name}&quot;</span>?
               <br /><br />
               <span className="text-destructive font-medium">
                 ⚠️ This will permanently delete the project AND all of its tasks, comments, and attachments.

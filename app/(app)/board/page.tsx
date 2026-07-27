@@ -489,7 +489,7 @@ export default function BoardPage() {
             <AlertDialogTitle>Delete Task</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete{' '}
-              <span className="font-semibold text-foreground">"{taskToDelete?.title}"</span>?
+              <span className="font-semibold text-foreground">&quot;{taskToDelete?.title}&quot;</span>?
               This action cannot be undone and will remove all comments, attachments, and time logs.
             </AlertDialogDescription>
           </AlertDialogHeader>

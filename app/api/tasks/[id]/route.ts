@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireOrgAccess } from '@/lib/auth/get-org';
+import { can, canEdit } from '@/lib/auth/roles';
 import { emitToOrg, emitToUser } from '@/lib/socket/server';
 import { SOCKET_EVENTS } from '@/lib/socket/events';
 
@@ -9,8 +10,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
 
-  const task = await prisma.task.findUnique({
-    where: { id },
+  const task = await prisma.task.findFirst({
+    where: { id, project: { org_id: access.orgId } },
     include: {
       project: true,
       assignees: { include: { profile: true } },
@@ -34,11 +35,28 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const access = await requireOrgAccess();
   if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  if (!canEdit(access.role)) {
+    return NextResponse.json({ error: 'Forbidden: Insufficient permissions' }, { status: 403 });
+  }
+
   const { id } = await params;
   const userId = access.userId;
 
+  const existingTask = await prisma.task.findFirst({
+    where: { id, project: { org_id: access.orgId } },
+  });
+  if (!existingTask) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
   try {
     const body = await req.json();
+    if (body.project_id) {
+      const targetProject = await prisma.project.findFirst({
+        where: { id: body.project_id as string, org_id: access.orgId },
+      });
+      if (!targetProject) return NextResponse.json({ error: 'Target project not found' }, { status: 404 });
+    }
+
     const data: Record<string, unknown> = {};
     if (body.title !== undefined) data.title = body.title;
     if (body.description !== undefined) data.description = body.description;
@@ -155,7 +173,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const access = await requireOrgAccess();
   if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  if (!can(access.role, 'delete_task')) {
+    return NextResponse.json({ error: 'Forbidden: Insufficient permissions' }, { status: 403 });
+  }
+
   const { id } = await params;
+
+  const existingTask = await prisma.task.findFirst({
+    where: { id, project: { org_id: access.orgId } },
+  });
+  if (!existingTask) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   try {
     await prisma.task.delete({ where: { id } });
