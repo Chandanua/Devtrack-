@@ -21,6 +21,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          JWT_SECRET: "ci-jwt-secret-testing-string-key-12345"
+          ENCRYPTION_KEY: "ISbUewgsbMaz0PyQ+fcuZenYq6wyfkzxghPPZP6cflwE="
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/devtrack_test"
 
       - name: Typecheck
         run: npm run typecheck

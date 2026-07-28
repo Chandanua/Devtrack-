@@ -257,6 +257,7 @@ model Task {
   recurrence_rule  String?
   sprint_id        String?      @db.Uuid
   google_calendar_event_id String?
+  google_calendar_owner_id String?
   created_at       DateTime     @default(now())
   updated_at       DateTime     @updatedAt
 

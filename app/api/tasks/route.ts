@@ -106,6 +106,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
+    // Validate that all assignee_ids belong to caller's org
+    if (data.assignee_ids?.length) {
+      const validMemberships = await prisma.orgMembership.findMany({
+        where: {
+          org_id: access.orgId,
+          user_id: { in: data.assignee_ids },
+        },
+        select: { user_id: true },
+      });
+      const validMemberIds = new Set(validMemberships.map((m) => m.user_id));
+      const hasInvalidAssignee = data.assignee_ids.some((uid: string) => !validMemberIds.has(uid));
+      if (hasInvalidAssignee) {
+        return NextResponse.json(
+          { error: 'One or more assignees are not members of this organization' },
+          { status: 400 }
+        );
+      }
+    }
+
     const task = await prisma.task.create({
       data: {
         title: data.title.trim(),
@@ -159,7 +178,7 @@ export async function POST(request: Request) {
             provider: 'google',
             refresh_token: { not: null },
           },
-          select: { id: true },
+          select: { id: true, user_id: true },
         });
 
         if (googleAccount) {
@@ -177,7 +196,10 @@ export async function POST(request: Request) {
 
           await prisma.task.update({
             where: { id: task.id },
-            data: { google_calendar_event_id: eventId },
+            data: {
+              google_calendar_event_id: eventId,
+              google_calendar_owner_id: googleAccount.user_id,
+            },
           });
         }
       } catch (err) {

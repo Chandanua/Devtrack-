@@ -104,8 +104,8 @@ export async function POST(
     },
   });
 
-  // Attempt email delivery without blocking response on failure
-  try {
+  // Dispatch invite email in the background without blocking the HTTP response
+  (async () => {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const inviteLink = `${baseUrl}/invite/${invite.token}`;
     const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { name: true } });
@@ -137,9 +137,9 @@ export async function POST(
       subject: `Invitation to join ${org?.name || 'organization'} on DevTrack`,
       html,
     });
-  } catch (emailError) {
+  })().catch((emailError) => {
     console.error('[invite] Failed to send invite email:', emailError);
-  }
+  });
 
   return NextResponse.json({ message: 'Invite created', invite_token: invite.token }, { status: 201 });
 }

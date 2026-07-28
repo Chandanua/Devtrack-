@@ -27,8 +27,8 @@ export async function notifyUsers(notifications: CreateNotificationItem[]): Prom
     emitToUser(n.user_id, SOCKET_EVENTS.NOTIFICATION_NEW, n);
   });
 
-  // 3. Dispatch emails asynchronously via Resend
-  try {
+  // 3. Dispatch emails asynchronously in the background (non-blocking)
+  (async () => {
     const userIds = Array.from(new Set(notifications.map((n) => n.user_id)));
     const profiles = await prisma.profile.findMany({
       where: { id: { in: userIds } },
@@ -68,7 +68,7 @@ export async function notifyUsers(notifications: CreateNotificationItem[]): Prom
         }
       })
     );
-  } catch (err) {
-    console.error('[notifications] Error looking up recipient profiles for email:', err);
-  }
+  })().catch((err) => {
+    console.error('[notifications] Background email dispatch error:', err);
+  });
 }

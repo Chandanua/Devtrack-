@@ -22,6 +22,9 @@ vi.mock('@/lib/db', () => ({
     activityLog: {
       create: vi.fn(),
     },
+    orgMembership: {
+      findMany: vi.fn(),
+    },
   },
 }));
 
@@ -122,6 +125,33 @@ describe('Security Regression Tests', () => {
 
       expect(res.status).toBe(404);
       expect(prisma.task.delete).not.toHaveBeenCalled();
+    });
+
+    it('rejects task assignment if an assignee is not a member of the organization (returns 400)', async () => {
+      vi.mocked(requireOrgAccess).mockResolvedValue(USER_A_ORG_A);
+      vi.mocked(prisma.task.findFirst).mockResolvedValue({
+        id: 'task-a-uuid',
+        title: 'Task A',
+        project_id: 'project-a-uuid',
+        google_calendar_event_id: null,
+        google_calendar_owner_id: null,
+      } as any);
+      vi.mocked(prisma.project.findFirst).mockResolvedValue({ id: 'project-a-uuid', org_id: 'org-a-uuid' } as any);
+      vi.mocked(prisma.orgMembership.findMany).mockResolvedValue([]);
+
+      const req = new Request('http://localhost:3000/api/tasks/task-a-uuid', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignee_ids: ['user-from-org-b-uuid'] }),
+      });
+
+      const res = await updateTask(req, {
+        params: Promise.resolve({ id: 'task-a-uuid' }),
+      });
+
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toContain('not members of this organization');
     });
   });
 
