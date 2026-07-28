@@ -154,7 +154,7 @@ model Profile {
   password_hash  String?
   full_name      String
   avatar_url     String?
-  role           UserRole         @default(developer)
+  job_role       UserRole         @default(developer)
   job_title      String?
   availability   UserAvailability @default(available)
   created_at     DateTime         @default(now())

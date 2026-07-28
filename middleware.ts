@@ -46,17 +46,7 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // Pass user ID and active org to downstream via headers
-  const response = NextResponse.next();
-  response.headers.set('x-user-id', payload.userId);
-
-  // Forward org cookie as header for API routes
-  const orgId = request.cookies.get('devtrack-org')?.value;
-  if (orgId) {
-    response.headers.set('x-org-id', orgId);
-  }
-
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {

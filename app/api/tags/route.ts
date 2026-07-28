@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { requireOrgAccess } from '@/lib/auth/get-org';
 import { can } from '@/lib/auth/roles';
+
+const createTagSchema = z.object({
+  name: z.string().min(1, 'Tag name is required'),
+  color: z.string().optional(),
+});
 
 export async function GET() {
   const access = await requireOrgAccess();
@@ -22,10 +28,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Forbidden: Insufficient permissions' }, { status: 403 });
   }
 
-  const { name, color } = await request.json();
-  if (!name?.trim()) {
-    return NextResponse.json({ error: 'Tag name is required' }, { status: 400 });
+  const body = await request.json();
+  const parsed = createTagSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
   }
+  const { name, color } = parsed.data;
 
   try {
     const tag = await prisma.tag.create({

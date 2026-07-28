@@ -38,36 +38,41 @@ export async function notifyUsers(notifications: CreateNotificationItem[]): Prom
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-    await Promise.all(
-      notifications.map(async (n) => {
-        const recipientEmail = emailMap.get(n.user_id);
-        if (!recipientEmail) return;
+    const sendNotificationEmail = async (n: CreateNotificationItem) => {
+      const recipientEmail = emailMap.get(n.user_id);
+      if (!recipientEmail) return;
 
-        const link = n.entity_type === 'task' ? `${baseUrl}/tasks/${n.entity_id}` : baseUrl;
+      const link = n.entity_type === 'task' ? `${baseUrl}/tasks/${n.entity_id}` : baseUrl;
 
-        const html = `
-          <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 8px;">
-            <h2 style="color: #111827; margin-top: 0; font-size: 18px;">${n.title}</h2>
-            ${n.body ? `<p style="color: #374151; font-size: 14px; line-height: 1.5;">${n.body}</p>` : ''}
-            <div style="margin: 24px 0;">
-              <a href="${link}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px; display: inline-block;">
-                View in DevTrack
-              </a>
-            </div>
+      const html = `
+        <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 8px;">
+          <h2 style="color: #111827; margin-top: 0; font-size: 18px;">${n.title}</h2>
+          ${n.body ? `<p style="color: #374151; font-size: 14px; line-height: 1.5;">${n.body}</p>` : ''}
+          <div style="margin: 24px 0;">
+            <a href="${link}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px; display: inline-block;">
+              View in DevTrack
+            </a>
           </div>
-        `;
+        </div>
+      `;
 
-        try {
-          await sendEmail({
-            to: recipientEmail,
-            subject: `[DevTrack] ${n.title}`,
-            html,
-          });
-        } catch (err) {
-          console.error('[notifications] Failed to send email notification:', err);
-        }
-      })
-    );
+      try {
+        await sendEmail({
+          to: recipientEmail,
+          subject: `[DevTrack] ${n.title}`,
+          html,
+        });
+      } catch (err) {
+        console.error('[notifications] Failed to send email notification:', err);
+      }
+    };
+
+    // Send emails in batches of 5 to avoid exceeding provider rate limits
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < notifications.length; i += BATCH_SIZE) {
+      const batch = notifications.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map((n) => sendNotificationEmail(n)));
+    }
   })().catch((err) => {
     console.error('[notifications] Background email dispatch error:', err);
   });

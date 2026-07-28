@@ -1,0 +1,2 @@
+-- Create partial unique index to prevent duplicate active timers for the same user and task
+CREATE UNIQUE INDEX "time_logs_active_timer_idx" ON "time_logs" ("task_id", "user_id") WHERE "end_time" IS NULL;

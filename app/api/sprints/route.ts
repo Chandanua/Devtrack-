@@ -1,7 +1,26 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
+import type { SprintStatus } from '@prisma/client';
 import { requireOrgAccess } from '@/lib/auth/get-org';
 import { can } from '@/lib/auth/roles';
+
+const createSprintSchema = z
+  .object({
+    name: z.string().min(1, 'Name is required'),
+    project_id: z.string().min(1, 'Project ID is required'),
+    start_date: z.string().min(1, 'Start date is required'),
+    end_date: z.string().min(1, 'End date is required'),
+    goal: z.string().nullable().optional(),
+    status: z.string().optional(),
+  })
+  .refine(
+    (data) => new Date(data.end_date) > new Date(data.start_date),
+    {
+      message: 'End date must be after start date',
+      path: ['end_date'],
+    }
+  );
 
 export async function GET(request: Request) {
   const access = await requireOrgAccess();
@@ -39,11 +58,11 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { name, goal, start_date, end_date, project_id, status } = body;
-
-    if (!name?.trim() || !project_id || !start_date || !end_date) {
-      return NextResponse.json({ error: 'Name, project, start and end dates are required' }, { status: 400 });
+    const parsed = createSprintSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
+    const { name, goal, start_date, end_date, project_id, status } = parsed.data;
 
     // Verify project belongs to org
     const project = await prisma.project.findFirst({
@@ -58,7 +77,7 @@ export async function POST(request: Request) {
         start_date: new Date(start_date),
         end_date: new Date(end_date),
         project_id,
-        status: status || 'planning',
+        status: (status as SprintStatus) || 'planning',
       },
       include: {
         project: { select: { id: true, name: true } },

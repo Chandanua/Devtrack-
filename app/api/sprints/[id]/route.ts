@@ -1,7 +1,30 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
+import type { SprintStatus } from '@prisma/client';
 import { requireOrgAccess } from '@/lib/auth/get-org';
 import { can } from '@/lib/auth/roles';
+
+const updateSprintSchema = z
+  .object({
+    name: z.string().optional(),
+    goal: z.string().nullable().optional(),
+    start_date: z.string().optional(),
+    end_date: z.string().optional(),
+    status: z.string().optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.start_date && data.end_date) {
+        return new Date(data.end_date) > new Date(data.start_date);
+      }
+      return true;
+    },
+    {
+      message: 'End date must be after start date',
+      path: ['end_date'],
+    }
+  );
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const access = await requireOrgAccess();
@@ -35,21 +58,27 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   const { id } = await params;
 
+  const body = await req.json();
+  const parsed = updateSprintSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+  }
+  const data = parsed.data;
+
   const existing = await prisma.sprint.findFirst({
     where: { id, project: { org_id: access.orgId } },
   });
   if (!existing) return NextResponse.json({ error: 'Sprint not found' }, { status: 404 });
 
   try {
-    const body = await req.json();
     const sprint = await prisma.sprint.update({
       where: { id },
       data: {
-        name: body.name ?? undefined,
-        goal: body.goal !== undefined ? body.goal : undefined,
-        start_date: body.start_date ? new Date(body.start_date) : undefined,
-        end_date: body.end_date ? new Date(body.end_date) : undefined,
-        status: body.status ?? undefined,
+        name: data.name ?? undefined,
+        goal: data.goal !== undefined ? data.goal : undefined,
+        start_date: data.start_date ? new Date(data.start_date) : undefined,
+        end_date: data.end_date ? new Date(data.end_date) : undefined,
+        status: data.status ? (data.status as SprintStatus) : undefined,
       },
     });
 

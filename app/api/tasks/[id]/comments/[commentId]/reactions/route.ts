@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { requireOrgAccess } from '@/lib/auth/get-org';
 import { canEdit } from '@/lib/auth/roles';
+
+const reactionSchema = z.object({
+  emoji: z.string().min(1, 'Emoji is required'),
+});
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string; commentId: string }> }) {
   const access = await requireOrgAccess();
@@ -12,9 +17,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const { id, commentId } = await params;
-  const { emoji } = await req.json();
 
-  if (!emoji) return NextResponse.json({ error: 'Emoji is required' }, { status: 400 });
+  const body = await req.json();
+  const parsed = reactionSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+  }
+  const { emoji } = parsed.data;
 
   const comment = await prisma.comment.findFirst({
     where: { id: commentId, task: { id, project: { org_id: access.orgId } } },

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
 import { signToken, COOKIE_NAME, COOKIE_OPTIONS } from '@/lib/auth/jwt';
@@ -8,6 +9,13 @@ import { getClientIp, checkRateLimit } from '@/lib/auth/rate-limit';
 import type { UserRole } from '@prisma/client';
 
 const ALLOWED_ROLES: UserRole[] = ['developer', 'qa_tester', 'designer', 'team_lead', 'project_manager'];
+
+const signupSchema = z.object({
+  email: z.string().email('Valid email is required'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  full_name: z.string().min(1, 'Full name is required'),
+  role: z.string().optional(),
+});
 
 export async function POST(request: Request) {
   const ip = getClientIp(request);
@@ -25,17 +33,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { email, password, full_name, role } = await request.json();
-
-    if (!email || !password || !full_name) {
-      return NextResponse.json({ error: 'Email, password, and full name are required' }, { status: 400 });
+    const body = await request.json();
+    const parsed = signupSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
+    const { email, password, full_name, role } = parsed.data;
 
-    if (password.length < 6) {
-      return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
-    }
-
-    const selectedRole: UserRole = ALLOWED_ROLES.includes(role) ? role : 'developer';
+    const selectedRole: UserRole = role && ALLOWED_ROLES.includes(role as UserRole) ? (role as UserRole) : 'developer';
 
     const existing = await prisma.profile.findUnique({ where: { email } });
     if (existing) {
@@ -51,7 +56,7 @@ export async function POST(request: Request) {
           email,
           password_hash,
           full_name: full_name.trim(),
-          role: selectedRole,
+          job_role: selectedRole,
         },
       });
 
@@ -74,7 +79,7 @@ export async function POST(request: Request) {
         id: profile.id,
         email: profile.email,
         full_name: profile.full_name,
-        role: profile.role,
+        job_role: profile.job_role,
         avatar_url: profile.avatar_url,
         job_title: profile.job_title,
         availability: profile.availability,

@@ -21,36 +21,43 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { usePaginatedTasks } from '@/hooks/use-paginated-tasks';
 
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
+
+  const {
+    tasks,
+    pagination,
+    isLoading: tasksLoading,
+    isLoadingMore,
+    loadMore,
+    refresh: fetchTasks,
+  } = usePaginatedTasks({ projectId, parentOnly: true, pageSize: 25 });
+
   const [project, setProject] = useState<any>(null);
-  const [tasks, setTasks] = useState<TaskWithRelations[]>([]);
+  const [projectLoading, setProjectLoading] = useState(true);
   const [members, setMembers] = useState<any[]>([]);
   const [tags, setTags] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const fetchData = useCallback(async () => {
-    const [pRes, tRes] = await Promise.all([
-      fetch(`/api/projects/${projectId}`),
-      fetch(`/api/tasks?projectId=${projectId}&parentOnly=true&pageSize=100`),
-    ]);
+  const fetchProjectDetails = useCallback(async () => {
+    const pRes = await fetch(`/api/projects/${projectId}`);
     if (pRes.ok) setProject(await pRes.json());
-    if (tRes.ok) {
-      const tData = await tRes.json();
-      setTasks(tData.data ?? []);
-    }
-    setLoading(false);
+    setProjectLoading(false);
   }, [projectId]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const fetchData = useCallback(async () => {
+    await Promise.all([fetchProjectDetails(), fetchTasks()]);
+  }, [fetchProjectDetails, fetchTasks]);
+
+  useEffect(() => { fetchProjectDetails(); }, [fetchProjectDetails]);
   useEffect(() => {
     Promise.all([fetch('/api/members'), fetch('/api/tags'), fetch('/api/teams'), fetch('/api/projects?pageSize=100')])
       .then(async ([m, t, te, p]) => {
@@ -76,7 +83,7 @@ export default function ProjectDetailPage() {
     else toast.error('Failed to delete');
   }
 
-  if (loading) return <div className="p-4 md:p-6 lg:p-8"><Skeleton className="mb-6 h-8 w-48" /><Skeleton className="h-48 mb-6" /><Skeleton className="h-96" /></div>;
+  if (projectLoading || (tasksLoading && tasks.length === 0)) return <div className="p-4 md:p-6 lg:p-8"><Skeleton className="mb-6 h-8 w-48" /><Skeleton className="h-48 mb-6" /><Skeleton className="h-96" /></div>;
   if (!project) return <div className="p-8"><EmptyState icon={ListTodo} title="Project not found" description="This project may have been deleted." action={<Button onClick={() => router.push('/projects')}>Back to projects</Button>} /></div>;
 
   const meta = PROJECT_STATUS_META[project.status as keyof typeof PROJECT_STATUS_META] ?? PROJECT_STATUS_META.planning;
@@ -117,30 +124,45 @@ export default function ProjectDetailPage() {
       </motion.div>
 
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Tasks ({tasks.length})</h2>
+        <h2 className="text-sm font-semibold">Tasks ({pagination.total || tasks.length})</h2>
       </div>
 
       {tasks.length === 0 ? (
         <EmptyState icon={ListTodo} title="No tasks yet" description="Add a task to this project to get started." action={<Button onClick={() => setCreateOpen(true)} className="gap-2"><Plus className="h-4 w-4" />Add task</Button>} />
       ) : (
-        <Card className="divide-y">
-          {tasks.map((task, i) => (
-            <motion.div key={task.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: Math.min(i * 0.03, 0.3) }}>
-              <Link href={`/tasks/${task.id}`} className="flex items-center gap-3 p-4 transition-colors hover:bg-muted/50">
-                <PriorityBadge priority={task.priority as any} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{task.title}</p>
-                  <div className="mt-1 flex items-center gap-2 flex-wrap">
-                    <StatusBadge status={task.status as any} />
-                    {task.tags?.map((tag) => <TagChip key={tag.id} name={tag.name} color={tag.color} />)}
+        <>
+          <Card className="divide-y">
+            {tasks.map((task, i) => (
+              <motion.div key={task.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: Math.min(i * 0.03, 0.3) }}>
+                <Link href={`/tasks/${task.id}`} className="flex items-center gap-3 p-4 transition-colors hover:bg-muted/50">
+                  <PriorityBadge priority={task.priority as any} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{task.title}</p>
+                    <div className="mt-1 flex items-center gap-2 flex-wrap">
+                      <StatusBadge status={task.status as any} />
+                      {task.tags?.map((tag: any) => <TagChip key={tag.id} name={tag.name} color={tag.color} />)}
+                    </div>
                   </div>
-                </div>
-                {task.assignees && task.assignees.length > 0 && <AvatarStack users={task.assignees} size="xs" max={3} />}
-                {task.due_date && <span className={cn('text-xs', isOverdue(task.due_date) && task.status !== 'completed' ? 'text-destructive font-medium' : 'text-muted-foreground')}>{new Date(task.due_date).toLocaleDateString('en', { month: 'short', day: 'numeric' })}</span>}
-              </Link>
-            </motion.div>
-          ))}
-        </Card>
+                  {task.assignees && task.assignees.length > 0 && <AvatarStack users={task.assignees} size="xs" max={3} />}
+                  {task.due_date && <span className={cn('text-xs', isOverdue(task.due_date) && task.status !== 'completed' ? 'text-destructive font-medium' : 'text-muted-foreground')}>{new Date(task.due_date).toLocaleDateString('en', { month: 'short', day: 'numeric' })}</span>}
+                </Link>
+              </motion.div>
+            ))}
+          </Card>
+
+          {pagination.hasMore && (
+            <div className="mt-4 flex justify-center">
+              <Button
+                variant="outline"
+                onClick={loadMore}
+                disabled={isLoadingMore}
+                className="gap-2 text-xs"
+              >
+                {isLoadingMore ? 'Loading tasks...' : `Load more tasks (${tasks.length} of ${pagination.total})`}
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       <TaskFormDialog open={createOpen} onOpenChange={setCreateOpen} defaultProjectId={projectId} projects={projects} teamMembers={members} tags={tags} onSaved={() => fetchData()} />

@@ -70,8 +70,8 @@ export default function TeamPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold">{member.full_name}</p>
-                        <p className="truncate text-xs text-muted-foreground">{member.job_title ?? ROLE_LABELS_MAP[member.role] ?? 'Member'}</p>
-                        <Badge variant="secondary" className="mt-1.5 text-[10px]">{ROLE_LABELS_MAP[member.role] ?? 'Unknown'}</Badge>
+                        <p className="truncate text-xs text-muted-foreground">{member.job_title ?? ROLE_LABELS_MAP[member.job_role] ?? 'Member'}</p>
+                        <Badge variant="secondary" className="mt-1.5 text-[10px]">{ROLE_LABELS_MAP[member.job_role] ?? 'Unknown'}</Badge>
                       </div>
                     </div>
                     <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground"><Mail className="h-3.5 w-3.5" /><span className="truncate">{member.email}</span></div>

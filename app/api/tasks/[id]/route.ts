@@ -105,6 +105,25 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       }
     }
 
+    // Validate that all tag_ids belong to caller's org
+    if (data.tag_ids?.length) {
+      const validTags = await prisma.tag.findMany({
+        where: {
+          org_id: access.orgId,
+          id: { in: data.tag_ids as string[] },
+        },
+        select: { id: true },
+      });
+      const validTagIds = new Set(validTags.map((t) => t.id));
+      const hasInvalidTag = (data.tag_ids as string[]).some((tid) => !validTagIds.has(tid));
+      if (hasInvalidTag) {
+        return NextResponse.json(
+          { error: 'One or more tags do not belong to this organization' },
+          { status: 400 }
+        );
+      }
+    }
+
     const updateData: Record<string, unknown> = {};
     if (data.title !== undefined) updateData.title = data.title;
     if (data.description !== undefined) updateData.description = data.description;
@@ -231,8 +250,65 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
               });
             }
           }
+        } else {
+          // Owner was unassigned: Try deleting orphaned event from old owner's Google calendar
+          try {
+            const oldOwnerAccount = await prisma.account.findFirst({
+              where: {
+                user_id: existingTask.google_calendar_owner_id,
+                provider: 'google',
+                refresh_token: { not: null },
+              },
+              select: { id: true },
+            });
+            if (oldOwnerAccount) {
+              const oldAccessToken = await getValidAccessToken(oldOwnerAccount.id);
+              await deleteCalendarEvent(oldAccessToken, existingTask.google_calendar_event_id);
+            }
+          } catch (deleteErr) {
+            console.error('[Google Calendar] Could not delete orphaned event from unassigned owner:', deleteErr);
+          }
+
+          // Clear old calendar info from database
+          await prisma.task.update({
+            where: { id },
+            data: { google_calendar_event_id: null, google_calendar_owner_id: null },
+          });
+
+          // If task still has a due_date and current assignees include an eligible Google user, create a new event
+          if (task.due_date && assigneeIds.length) {
+            const newGoogleAccount = await prisma.account.findFirst({
+              where: {
+                user_id: { in: assigneeIds },
+                provider: 'google',
+                refresh_token: { not: null },
+              },
+              select: { id: true, user_id: true },
+            });
+
+            if (newGoogleAccount) {
+              const accessToken = await getValidAccessToken(newGoogleAccount.id);
+              const startDate = new Date(task.due_date);
+              const durationMs = (task.estimated_minutes || 60) * 60 * 1000;
+              const endDate = new Date(startDate.getTime() + durationMs);
+
+              const eventId = await createCalendarEvent(accessToken, {
+                title: task.title,
+                description: task.description,
+                startDate,
+                endDate,
+              });
+
+              await prisma.task.update({
+                where: { id },
+                data: {
+                  google_calendar_event_id: eventId,
+                  google_calendar_owner_id: newGoogleAccount.user_id,
+                },
+              });
+            }
+          }
         }
-        // If owner is no longer an assignee, skip update/delete gracefully as requested
       } else if (!existingTask.google_calendar_event_id && task.due_date && assigneeIds.length) {
         // No existing calendar event, but task now has a due date: Create event for first eligible assignee
         const googleAccount = await prisma.account.findFirst({

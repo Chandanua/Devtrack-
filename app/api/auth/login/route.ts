@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { comparePassword } from '@/lib/auth/password';
 import { signToken, COOKIE_NAME, COOKIE_OPTIONS } from '@/lib/auth/jwt';
 import { ORG_COOKIE } from '@/lib/auth/get-org';
 import { getClientIp, checkRateLimit } from '@/lib/auth/rate-limit';
+
+const loginSchema = z.object({
+  email: z.string().email('Valid email is required'),
+  password: z.string().min(1, 'Password is required'),
+});
 
 export async function POST(request: Request) {
   const ip = getClientIp(request);
@@ -21,11 +27,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { email, password } = await request.json();
-
-    if (!email || !password) {
-      return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
+    const body = await request.json();
+    const parsed = loginSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
+    const { email, password } = parsed.data;
 
     const profile = await prisma.profile.findUnique({ where: { email } });
     if (!profile) {
@@ -63,7 +70,7 @@ export async function POST(request: Request) {
         id: profile.id,
         email: profile.email,
         full_name: profile.full_name,
-        role: profile.role,
+        job_role: profile.job_role,
         avatar_url: profile.avatar_url,
         job_title: profile.job_title,
         availability: profile.availability,

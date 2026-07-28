@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { getUserId } from '@/lib/auth/get-user';
 import { sendEmail } from '@/lib/email';
+import { notifyUsers } from '@/lib/notifications';
 import type { OrgRole } from '@prisma/client';
 
 const VALID_ORG_ROLES: OrgRole[] = ['owner', 'admin', 'member', 'viewer'];
+
+const inviteMemberSchema = z.object({
+  email: z.string().email('Valid email is required'),
+  role: z.string().optional(),
+});
 
 // List org members
 export async function GET(
@@ -27,7 +34,7 @@ export async function GET(
       profile: {
         select: {
           id: true, email: true, full_name: true, avatar_url: true,
-          role: true, job_title: true, availability: true,
+          job_role: true, job_title: true, availability: true,
         },
       },
     },
@@ -56,10 +63,12 @@ export async function POST(
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
-  const { email, role = 'member' } = await request.json();
-  if (!email?.trim()) {
-    return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+  const body = await request.json();
+  const parsed = inviteMemberSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
   }
+  const { email, role = 'member' } = parsed.data;
 
   if (!VALID_ORG_ROLES.includes(role as OrgRole)) {
     return NextResponse.json({ error: 'Invalid organization role' }, { status: 400 });
@@ -71,7 +80,7 @@ export async function POST(
 
   const targetRole = role as OrgRole;
 
-  // Check if already a member
+  // Check if existing user is already a member
   const existingUser = await prisma.profile.findUnique({ where: { email: email.trim() } });
   if (existingUser) {
     const existingMembership = await prisma.orgMembership.findUnique({
@@ -80,16 +89,9 @@ export async function POST(
     if (existingMembership) {
       return NextResponse.json({ error: 'User is already a member' }, { status: 409 });
     }
-
-    // User exists, add them directly
-    await prisma.orgMembership.create({
-      data: { org_id: orgId, user_id: existingUser.id, role: targetRole },
-    });
-
-    return NextResponse.json({ message: 'Member added' }, { status: 201 });
   }
 
-  // Create invite for non-existing users
+  // Create invite for both existing and non-existing users (unified consent flow)
   const invite = await prisma.orgInvite.upsert({
     where: { org_id_email: { org_id: orgId, email: email.trim() } },
     update: {
@@ -103,6 +105,20 @@ export async function POST(
       expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     },
   });
+
+  // If user already has a platform profile, send an in-app notification as well
+  if (existingUser) {
+    await notifyUsers([
+      {
+        user_id: existingUser.id,
+        type: 'org_invite',
+        entity_id: orgId,
+        entity_type: 'org',
+        title: 'Organization Invite',
+        body: "You've been invited to join an organization on DevTrack",
+      },
+    ]);
+  }
 
   // Dispatch invite email in the background without blocking the HTTP response
   (async () => {

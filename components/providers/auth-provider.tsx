@@ -8,7 +8,7 @@ interface Profile {
   email: string;
   full_name: string;
   avatar_url: string | null;
-  role: string;
+  job_role: string;
   job_title: string | null;
   availability: string;
   created_at: string;

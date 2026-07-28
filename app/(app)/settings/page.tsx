@@ -83,7 +83,7 @@ export default function SettingsPage() {
 
             <div>
               <Label>Role</Label>
-              <div className="mt-1"><Badge variant="secondary">{ROLE_LABELS_MAP[profile?.role ?? ''] ?? 'Unknown'}</Badge></div>
+              <div className="mt-1"><Badge variant="secondary">{ROLE_LABELS_MAP[profile?.job_role ?? ''] ?? 'Unknown'}</Badge></div>
               <p className="mt-1 text-xs text-muted-foreground">Contact an admin to change your role</p>
             </div>
           </div>

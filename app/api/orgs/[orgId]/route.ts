@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { getUserId } from '@/lib/auth/get-user';
+
+const updateOrgSchema = z.object({
+  name: z.string().optional(),
+  logo_url: z.string().nullable().optional(),
+});
 
 // Get org details
 export async function GET(
@@ -43,11 +49,17 @@ export async function PUT(
   }
 
   const body = await request.json();
+  const parsed = updateOrgSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+  }
+  const data = parsed.data;
+
   const org = await prisma.organization.update({
     where: { id: orgId },
     data: {
-      ...(body.name && { name: body.name.trim() }),
-      ...(body.logo_url !== undefined && { logo_url: body.logo_url }),
+      ...(data.name && { name: data.name.trim() }),
+      ...(data.logo_url !== undefined && { logo_url: data.logo_url }),
     },
   });
 

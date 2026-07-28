@@ -13,7 +13,7 @@ export async function GET() {
       profile: {
         select: {
           id: true, email: true, full_name: true, avatar_url: true,
-          role: true, job_title: true, availability: true, created_at: true,
+          job_role: true, job_title: true, availability: true, created_at: true,
         },
       },
     },

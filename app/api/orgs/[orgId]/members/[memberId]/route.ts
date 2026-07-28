@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { getUserId } from '@/lib/auth/get-user';
 import type { OrgRole } from '@prisma/client';
 
 const VALID_ORG_ROLES: OrgRole[] = ['owner', 'admin', 'member', 'viewer'];
+
+const updateMemberRoleSchema = z.object({
+  role: z.string().min(1, 'Role is required'),
+});
 
 // Change member role
 export async function PUT(
@@ -22,7 +27,13 @@ export async function PUT(
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
   }
 
-  const { role } = await request.json();
+  const body = await request.json();
+  const parsed = updateMemberRoleSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+  }
+  const { role } = parsed.data;
+
   if (!VALID_ORG_ROLES.includes(role as OrgRole)) {
     return NextResponse.json({ error: 'Invalid organization role' }, { status: 400 });
   }

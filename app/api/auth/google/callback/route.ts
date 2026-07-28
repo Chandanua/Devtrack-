@@ -5,8 +5,15 @@ import { signToken, COOKIE_NAME, COOKIE_OPTIONS } from '@/lib/auth/jwt';
 import { exchangeGoogleCode, getGoogleUser, slugify } from '@/lib/auth/oauth';
 import { ORG_COOKIE } from '@/lib/auth/get-org';
 import { encrypt } from '@/lib/crypto';
+import { getClientIp, checkRateLimit } from '@/lib/auth/rate-limit';
 
 export async function GET(request: NextRequest) {
+  const ip = getClientIp(request);
+  const rateLimit = checkRateLimit(ip, 10, 60);
+  if (!rateLimit.success) {
+    return NextResponse.redirect(new URL('/login?error=too_many_requests', request.url));
+  }
+
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
@@ -38,7 +45,7 @@ export async function GET(request: NextRequest) {
           email: gUser.email,
           full_name: gUser.name || gUser.email.split('@')[0],
           avatar_url: gUser.picture,
-          role: 'developer',
+          job_role: 'developer',
         },
       });
     }

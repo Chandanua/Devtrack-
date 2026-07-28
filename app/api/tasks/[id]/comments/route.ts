@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { requireOrgAccess } from '@/lib/auth/get-org';
 import { canEdit } from '@/lib/auth/roles';
 import { emitToTask } from '@/lib/socket/server';
 import { SOCKET_EVENTS } from '@/lib/socket/events';
 import { notifyUsers } from '@/lib/notifications';
+
+const createCommentSchema = z.object({
+  body: z.string().min(1, 'Comment body is required'),
+});
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const access = await requireOrgAccess();
@@ -38,17 +43,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const { id } = await params;
 
+  const body = await req.json();
+  const parsed = createCommentSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+  }
+  const commentBody = parsed.data.body.trim();
+
   const task = await prisma.task.findFirst({
     where: { id, project: { org_id: access.orgId } },
     select: { title: true, assignees: { select: { user_id: true } } },
   });
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
 
-  const { body } = await req.json();
-  if (!body?.trim()) return NextResponse.json({ error: 'Comment body is required' }, { status: 400 });
-
   const comment = await prisma.comment.create({
-    data: { task_id: id, author_id: access.userId, body: body.trim() },
+    data: { task_id: id, author_id: access.userId, body: commentBody },
     include: { author: true, reactions: { select: { emoji: true, user_id: true } } },
   });
 

@@ -49,6 +49,26 @@ export async function getValidAccessToken(accountId: string): Promise<string> {
   if (!res.ok) {
     const errorText = await res.text();
     console.error('[Google Calendar] Failed to refresh access token:', res.status, errorText);
+
+    let isInvalidGrant = false;
+    try {
+      const errorData = JSON.parse(errorText);
+      if (errorData.error === 'invalid_grant') {
+        isInvalidGrant = true;
+      }
+    } catch {
+      if (errorText.includes('invalid_grant')) {
+        isInvalidGrant = true;
+      }
+    }
+
+    if (isInvalidGrant) {
+      await prisma.account.update({
+        where: { id: accountId },
+        data: { refresh_token: null },
+      });
+    }
+
     throw new Error(`Failed to refresh Google access token: ${res.status}`);
   }
 

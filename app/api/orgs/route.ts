@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { getUserId } from '@/lib/auth/get-user';
 import { slugify } from '@/lib/auth/oauth';
+
+const createOrgSchema = z.object({
+  name: z.string().min(1, 'Organization name is required'),
+});
 
 // List all orgs the current user belongs to
 export async function GET() {
@@ -39,12 +44,14 @@ export async function POST(request: Request) {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const { name } = await request.json();
-    if (!name?.trim()) {
-      return NextResponse.json({ error: 'Organization name is required' }, { status: 400 });
+    const body = await request.json();
+    const parsed = createOrgSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
+    const name = parsed.data.name.trim();
 
-    let slug = slugify(name.trim());
+    let slug = slugify(name);
 
     // Ensure unique slug
     const existing = await prisma.organization.findUnique({ where: { slug } });

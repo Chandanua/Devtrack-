@@ -125,6 +125,25 @@ export async function POST(request: Request) {
       }
     }
 
+    // Validate that all tag_ids belong to caller's org
+    if (data.tag_ids?.length) {
+      const validTags = await prisma.tag.findMany({
+        where: {
+          org_id: access.orgId,
+          id: { in: data.tag_ids },
+        },
+        select: { id: true },
+      });
+      const validTagIds = new Set(validTags.map((t) => t.id));
+      const hasInvalidTag = data.tag_ids.some((tid: string) => !validTagIds.has(tid));
+      if (hasInvalidTag) {
+        return NextResponse.json(
+          { error: 'One or more tags do not belong to this organization' },
+          { status: 400 }
+        );
+      }
+    }
+
     const task = await prisma.task.create({
       data: {
         title: data.title.trim(),

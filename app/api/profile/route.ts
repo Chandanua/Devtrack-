@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { getUser, getUserId } from '@/lib/auth/get-user';
+
+const updateProfileSchema = z.object({
+  full_name: z.string().optional(),
+  job_title: z.string().nullable().optional(),
+  avatar_url: z.string().nullable().optional(),
+});
 
 export async function GET() {
   const user = await getUser();
@@ -14,16 +21,22 @@ export async function PUT(request: Request) {
 
   try {
     const body = await request.json();
+    const parsed = updateProfileSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+    }
+    const bodyData = parsed.data;
+
     const data: Record<string, unknown> = {};
-    if (body.full_name !== undefined) data.full_name = body.full_name.trim();
-    if (body.job_title !== undefined) data.job_title = body.job_title?.trim() || null;
-    if (body.avatar_url !== undefined) data.avatar_url = body.avatar_url || null;
+    if (bodyData.full_name !== undefined) data.full_name = bodyData.full_name.trim();
+    if (bodyData.job_title !== undefined) data.job_title = bodyData.job_title?.trim() || null;
+    if (bodyData.avatar_url !== undefined) data.avatar_url = bodyData.avatar_url || null;
 
     const updated = await prisma.profile.update({
       where: { id: userId },
       select: {
         id: true, email: true, full_name: true, avatar_url: true,
-        role: true, job_title: true, availability: true, created_at: true, updated_at: true,
+        job_role: true, job_title: true, availability: true, created_at: true, updated_at: true,
       },
       data,
     });
