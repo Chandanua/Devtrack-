@@ -21,8 +21,12 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
-    const res = await fetch('/api/tasks?hasDueDate=true&parentOnly=true');
-    if (res.ok) setTasks((await res.json()).filter((t: TaskWithRelations) => t.status !== 'completed'));
+    const res = await fetch('/api/tasks?hasDueDate=true&parentOnly=true&pageSize=100');
+    if (res.ok) {
+      const data = await res.json();
+      const taskList = data.data ?? [];
+      setTasks(taskList.filter((t: TaskWithRelations) => t.status !== 'completed'));
+    }
   }, []);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);

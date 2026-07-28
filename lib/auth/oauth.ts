@@ -72,6 +72,13 @@ export async function exchangeGitHubCode(code: string, baseUrl?: string): Promis
       redirect_uri: `${base}/api/auth/github/callback`,
     }),
   });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error('[GitHub OAuth] Token exchange failed:', res.status, errorText);
+    return {} as { access_token: string };
+  }
+
   return res.json();
 }
 
@@ -85,6 +92,13 @@ export async function getGitHubUser(accessToken: string): Promise<{
   const res = await fetch(GITHUB_CONFIG.userUrl, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error('[GitHub OAuth] Userinfo fetch failed:', res.status, errorText);
+    return {} as { id: number; login: string; name: string | null; avatar_url: string; email: string | null };
+  }
+
   return res.json();
 }
 
@@ -97,7 +111,7 @@ export async function getGitHubEmails(accessToken: string): Promise<
   return res.json();
 }
 
-export async function exchangeGoogleCode(code: string, baseUrl?: string): Promise<{ access_token: string }> {
+export async function exchangeGoogleCode(code: string, baseUrl?: string): Promise<{ access_token: string; refresh_token?: string }> {
   const base = getBaseUrl(baseUrl);
   const res = await fetch(GOOGLE_CONFIG.tokenUrl, {
     method: 'POST',
@@ -110,6 +124,13 @@ export async function exchangeGoogleCode(code: string, baseUrl?: string): Promis
       redirect_uri: `${base}/api/auth/google/callback`,
     }),
   });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error('[Google OAuth] Token exchange failed:', res.status, errorText);
+    return {} as { access_token: string; refresh_token?: string };
+  }
+
   return res.json();
 }
 
@@ -122,6 +143,13 @@ export async function getGoogleUser(accessToken: string): Promise<{
   const res = await fetch(GOOGLE_CONFIG.userUrl, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error('[Google OAuth] Userinfo fetch failed:', res.status, errorText);
+    return {} as { id: string; email: string; name: string; picture: string };
+  }
+
   return res.json();
 }
 

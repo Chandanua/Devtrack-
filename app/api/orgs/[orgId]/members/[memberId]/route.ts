@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getUserId } from '@/lib/auth/get-user';
+import type { OrgRole } from '@prisma/client';
+
+const VALID_ORG_ROLES: OrgRole[] = ['owner', 'admin', 'member', 'viewer'];
 
 // Change member role
 export async function PUT(
@@ -20,8 +23,12 @@ export async function PUT(
   }
 
   const { role } = await request.json();
-  if (!['admin', 'member', 'viewer'].includes(role)) {
-    return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
+  if (!VALID_ORG_ROLES.includes(role as OrgRole)) {
+    return NextResponse.json({ error: 'Invalid organization role' }, { status: 400 });
+  }
+
+  if (role === 'owner' && myMembership.role !== 'owner') {
+    return NextResponse.json({ error: 'Only organization owners can assign the owner role' }, { status: 403 });
   }
 
   // Can't change owner role unless you're the owner
@@ -35,7 +42,7 @@ export async function PUT(
 
   const updated = await prisma.orgMembership.update({
     where: { id: memberId },
-    data: { role: role as any },
+    data: { role: role as OrgRole },
   });
 
   return NextResponse.json(updated);

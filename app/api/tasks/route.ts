@@ -1,10 +1,27 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
+import type { TaskStatus, TaskPriority } from '@prisma/client';
 import { requireOrgAccess } from '@/lib/auth/get-org';
-import { emitToOrg, emitToUser } from '@/lib/socket/server';
+import { emitToOrg } from '@/lib/socket/server';
 import { SOCKET_EVENTS } from '@/lib/socket/events';
-
 import { can } from '@/lib/auth/roles';
+import { notifyUsers } from '@/lib/notifications';
+import { getValidAccessToken, createCalendarEvent } from '@/lib/google-calendar';
+
+const createTaskSchema = z.object({
+  title: z.string().min(1, 'Title is required'),
+  project_id: z.string().min(1, 'Project is required'),
+  description: z.string().nullable().optional(),
+  status: z.string().optional(),
+  priority: z.string().optional(),
+  parent_task_id: z.string().nullable().optional(),
+  due_date: z.string().nullable().optional(),
+  estimated_minutes: z.union([z.number(), z.string()]).nullable().optional(),
+  order_index: z.number().optional(),
+  assignee_ids: z.array(z.string()).optional(),
+  tag_ids: z.array(z.string()).optional(),
+});
 
 export async function GET(request: Request) {
   const access = await requireOrgAccess();
@@ -16,6 +33,12 @@ export async function GET(request: Request) {
   const hasDueDate = url.searchParams.get('hasDueDate');
   const parentOnly = url.searchParams.get('parentOnly') !== 'false';
 
+  const pageParam = parseInt(url.searchParams.get('page') || '1', 10);
+  const pageSizeParam = parseInt(url.searchParams.get('pageSize') || '25', 10);
+
+  const page = Math.max(1, isNaN(pageParam) ? 1 : pageParam);
+  const pageSize = Math.min(100, Math.max(1, isNaN(pageSizeParam) ? 25 : pageSizeParam));
+
   const where: Record<string, unknown> = {
     project: { org_id: access.orgId },
   };
@@ -24,17 +47,22 @@ export async function GET(request: Request) {
   if (parentOnly) where.parent_task_id = null;
   if (hasDueDate === 'true') where.due_date = { not: null };
 
-  const tasks = await prisma.task.findMany({
-    where,
-    include: {
-      project: { select: { id: true, name: true } },
-      assignees: { include: { profile: true } },
-      tags: { include: { tag: true } },
-      subtasks: true,
-      _count: { select: { comments: true, subtasks: true, attachments: true, assignees: true } },
-    },
-    orderBy: { order_index: 'asc' },
-  });
+  const [tasks, total] = await Promise.all([
+    prisma.task.findMany({
+      where,
+      include: {
+        project: { select: { id: true, name: true } },
+        assignees: { include: { profile: true } },
+        tags: { include: { tag: true } },
+        subtasks: true,
+        _count: { select: { comments: true, subtasks: true, attachments: true, assignees: true } },
+      },
+      orderBy: { order_index: 'asc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.task.count({ where }),
+  ]);
 
   const mapped = tasks.map((t) => ({
     ...t,
@@ -42,7 +70,17 @@ export async function GET(request: Request) {
     tags: t.tags.map((tt) => tt.tag),
   }));
 
-  return NextResponse.json(mapped);
+  const totalPages = Math.ceil(total / pageSize);
+
+  return NextResponse.json({
+    data: mapped,
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages,
+    },
+  });
 }
 
 export async function POST(request: Request) {
@@ -55,15 +93,14 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    if (!body.title?.trim()) {
-      return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+    const parsed = createTaskSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
-    if (!body.project_id) {
-      return NextResponse.json({ error: 'Project is required' }, { status: 400 });
-    }
+    const data = parsed.data;
 
     const project = await prisma.project.findFirst({
-      where: { id: body.project_id, org_id: access.orgId },
+      where: { id: data.project_id, org_id: access.orgId },
     });
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
@@ -71,26 +108,26 @@ export async function POST(request: Request) {
 
     const task = await prisma.task.create({
       data: {
-        title: body.title.trim(),
-        description: body.description || null,
-        status: body.status || 'backlog',
-        priority: body.priority || 'medium',
-        project_id: body.project_id,
-        parent_task_id: body.parent_task_id || null,
-        due_date: body.due_date ? new Date(body.due_date) : null,
-        estimated_minutes: body.estimated_minutes ? Number(body.estimated_minutes) : null,
-        order_index: body.order_index ?? 0,
+        title: data.title.trim(),
+        description: data.description || null,
+        status: (data.status as TaskStatus) || 'backlog',
+        priority: (data.priority as TaskPriority) || 'medium',
+        project_id: data.project_id,
+        parent_task_id: data.parent_task_id || null,
+        due_date: data.due_date ? new Date(data.due_date) : null,
+        estimated_minutes: data.estimated_minutes ? Number(data.estimated_minutes) : null,
+        order_index: data.order_index ?? 0,
         created_by: access.userId,
       },
     });
 
     // Add assignees
-    if (body.assignee_ids?.length) {
+    if (data.assignee_ids?.length) {
       await prisma.taskAssignee.createMany({
-        data: body.assignee_ids.map((uid: string) => ({ task_id: task.id, user_id: uid })),
+        data: data.assignee_ids.map((uid: string) => ({ task_id: task.id, user_id: uid })),
       });
       // Create notifications
-      const notifs = body.assignee_ids.map((uid: string) => ({
+      const notifs = data.assignee_ids.map((uid: string) => ({
         user_id: uid,
         type: 'task_assigned' as const,
         entity_id: task.id,
@@ -98,18 +135,13 @@ export async function POST(request: Request) {
         title: 'You were assigned to a task',
         body: task.title,
       }));
-      await prisma.notification.createMany({ data: notifs });
-
-      // Emit real-time notification to assignees
-      notifs.forEach((n: any) => {
-        emitToUser(n.user_id, SOCKET_EVENTS.NOTIFICATION_NEW, n);
-      });
+      await notifyUsers(notifs);
     }
 
     // Add tags
-    if (body.tag_ids?.length) {
+    if (data.tag_ids?.length) {
       await prisma.taskTag.createMany({
-        data: body.tag_ids.map((tid: string) => ({ task_id: task.id, tag_id: tid })),
+        data: data.tag_ids.map((tid: string) => ({ task_id: task.id, tag_id: tid })),
       });
     }
 
@@ -117,6 +149,41 @@ export async function POST(request: Request) {
     await prisma.activityLog.create({
       data: { task_id: task.id, user_id: access.userId, action: 'created', metadata: { title: task.title } },
     });
+
+    // Google Calendar Sync
+    if (task.due_date && data.assignee_ids?.length) {
+      try {
+        const googleAccount = await prisma.account.findFirst({
+          where: {
+            user_id: { in: data.assignee_ids },
+            provider: 'google',
+            refresh_token: { not: null },
+          },
+          select: { id: true },
+        });
+
+        if (googleAccount) {
+          const accessToken = await getValidAccessToken(googleAccount.id);
+          const startDate = new Date(task.due_date);
+          const durationMs = (task.estimated_minutes || 60) * 60 * 1000;
+          const endDate = new Date(startDate.getTime() + durationMs);
+
+          const eventId = await createCalendarEvent(accessToken, {
+            title: task.title,
+            description: task.description,
+            startDate,
+            endDate,
+          });
+
+          await prisma.task.update({
+            where: { id: task.id },
+            data: { google_calendar_event_id: eventId },
+          });
+        }
+      } catch (err) {
+        console.error('[Google Calendar] Failed to create event on task POST:', err);
+      }
+    }
 
     // Fetch full task with relations to broadcast
     const fullTask = await prisma.task.findUnique({

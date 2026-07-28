@@ -52,8 +52,13 @@ export async function POST(request: Request) {
     const rawBody = await request.text();
     const signature = request.headers.get('x-hub-signature-256');
 
-    // Signature verification (in production or if header provided)
-    if (signature && !verifySignature(rawBody, signature)) {
+    // Signature verification (required unless NODE_ENV === 'development')
+    const isDev = process.env.NODE_ENV === 'development';
+    if (!signature) {
+      if (!isDev) {
+        return NextResponse.json({ error: 'Missing x-hub-signature-256 header' }, { status: 401 });
+      }
+    } else if (!verifySignature(rawBody, signature)) {
       return NextResponse.json({ error: 'Invalid HMAC signature' }, { status: 401 });
     }
 

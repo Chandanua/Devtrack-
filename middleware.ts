@@ -12,6 +12,7 @@ const PUBLIC_PATHS = [
   '/api/auth/google',
   '/api/auth/google/callback',
   '/api/orgs/invite',
+  '/api/webhooks/github',
 ];
 
 export async function middleware(request: NextRequest) {

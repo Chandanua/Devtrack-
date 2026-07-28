@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireOrgAccess } from '@/lib/auth/get-org';
 import { canEdit } from '@/lib/auth/roles';
-import { emitToTask, emitToUser } from '@/lib/socket/server';
+import { emitToTask } from '@/lib/socket/server';
 import { SOCKET_EVENTS } from '@/lib/socket/events';
+import { notifyUsers } from '@/lib/notifications';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const access = await requireOrgAccess();
@@ -68,8 +69,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }));
 
     if (notifs.length) {
-      await prisma.notification.createMany({ data: notifs });
-      notifs.forEach((n) => emitToUser(n.user_id, SOCKET_EVENTS.NOTIFICATION_NEW, n));
+      await notifyUsers(notifs);
     }
   }
 

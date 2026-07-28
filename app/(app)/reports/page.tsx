@@ -51,13 +51,19 @@ export default function ReportsPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [tRes, pRes, aRes] = await Promise.all([
-      fetch('/api/tasks?parentOnly=true'),
-      fetch('/api/projects'),
+      fetch('/api/tasks?parentOnly=true&pageSize=100'),
+      fetch('/api/projects?pageSize=100'),
       fetch(`/api/reports/analytics${selectedSprintId ? `?sprintId=${selectedSprintId}` : ''}`),
     ]);
 
-    if (tRes.ok) setTasks(await tRes.json());
-    if (pRes.ok) setProjects(await pRes.json());
+    if (tRes.ok) {
+      const tData = await tRes.json();
+      setTasks(tData.data ?? []);
+    }
+    if (pRes.ok) {
+      const pData = await pRes.json();
+      setProjects(pData.data ?? []);
+    }
     if (aRes.ok) setAnalytics(await aRes.json());
 
     setLoading(false);

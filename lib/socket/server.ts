@@ -59,8 +59,17 @@ export function initSocketServer(server: HTTPServer): SocketIOServer {
     const user = socket.data.user;
 
     // Join Org Room
-    socket.on(SOCKET_EVENTS.JOIN_ORG, ({ orgId }: { orgId: string }) => {
+    socket.on(SOCKET_EVENTS.JOIN_ORG, async ({ orgId }: { orgId: string }) => {
       if (!orgId) return;
+
+      const membership = await prisma.orgMembership.findUnique({
+        where: { org_id_user_id: { org_id: orgId, user_id: user.userId } },
+      });
+
+      if (!membership) {
+        socket.emit('error', { message: 'Unauthorized org access' });
+        return;
+      }
 
       const roomName = `org:${orgId}`;
       socket.join(roomName);
@@ -85,8 +94,28 @@ export function initSocketServer(server: HTTPServer): SocketIOServer {
     });
 
     // Join Task Room (for live comments)
-    socket.on(SOCKET_EVENTS.JOIN_TASK, ({ taskId }: { taskId: string }) => {
+    socket.on(SOCKET_EVENTS.JOIN_TASK, async ({ taskId }: { taskId: string }) => {
       if (!taskId) return;
+
+      const task = await prisma.task.findUnique({
+        where: { id: taskId },
+        select: { project: { select: { org_id: true } } },
+      });
+
+      if (!task?.project?.org_id) {
+        socket.emit('error', { message: 'Task not found' });
+        return;
+      }
+
+      const membership = await prisma.orgMembership.findUnique({
+        where: { org_id_user_id: { org_id: task.project.org_id, user_id: user.userId } },
+      });
+
+      if (!membership) {
+        socket.emit('error', { message: 'Unauthorized task access' });
+        return;
+      }
+
       socket.join(`task:${taskId}`);
     });
 

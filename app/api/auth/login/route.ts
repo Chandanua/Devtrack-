@@ -3,8 +3,23 @@ import { prisma } from '@/lib/db';
 import { comparePassword } from '@/lib/auth/password';
 import { signToken, COOKIE_NAME, COOKIE_OPTIONS } from '@/lib/auth/jwt';
 import { ORG_COOKIE } from '@/lib/auth/get-org';
+import { getClientIp, checkRateLimit } from '@/lib/auth/rate-limit';
 
 export async function POST(request: Request) {
+  const ip = getClientIp(request);
+  const rateLimit = checkRateLimit(ip, 5, 60);
+  if (!rateLimit.success) {
+    return NextResponse.json(
+      { error: 'Too many login attempts. Please try again later.' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(rateLimit.retryAfter),
+        },
+      }
+    );
+  }
+
   try {
     const { email, password } = await request.json();
 

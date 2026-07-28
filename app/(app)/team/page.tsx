@@ -20,9 +20,12 @@ export default function TeamPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [mRes, tRes] = await Promise.all([fetch('/api/members'), fetch('/api/tasks?parentOnly=true')]);
+    const [mRes, tRes] = await Promise.all([fetch('/api/members'), fetch('/api/tasks?parentOnly=true&pageSize=100')]);
     if (mRes.ok) setMembers(await mRes.json());
-    if (tRes.ok) setTasks(await tRes.json());
+    if (tRes.ok) {
+      const tData = await tRes.json();
+      setTasks(tData.data ?? []);
+    }
     setLoading(false);
   }, []);
 

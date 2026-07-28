@@ -1,9 +1,32 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { requireOrgAccess } from '@/lib/auth/get-org';
 import { can, canEdit } from '@/lib/auth/roles';
-import { emitToOrg, emitToUser } from '@/lib/socket/server';
+import { emitToOrg } from '@/lib/socket/server';
 import { SOCKET_EVENTS } from '@/lib/socket/events';
+import { notifyUsers } from '@/lib/notifications';
+import {
+  getValidAccessToken,
+  createCalendarEvent,
+  updateCalendarEvent,
+  deleteCalendarEvent,
+} from '@/lib/google-calendar';
+
+const updateTaskSchema = z.object({
+  title: z.string().optional(),
+  description: z.string().nullable().optional(),
+  status: z.string().optional(),
+  old_status: z.string().optional(),
+  priority: z.string().optional(),
+  old_priority: z.string().optional(),
+  due_date: z.string().nullable().optional(),
+  project_id: z.string().optional(),
+  estimated_minutes: z.union([z.number(), z.string()]).nullable().optional(),
+  order_index: z.number().optional(),
+  assignee_ids: z.array(z.string()).optional(),
+  tag_ids: z.array(z.string()).optional(),
+});
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const access = await requireOrgAccess();
@@ -43,36 +66,42 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   const userId = access.userId;
 
-  const existingTask = await prisma.task.findFirst({
-    where: { id, project: { org_id: access.orgId } },
-  });
-  if (!existingTask) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-
   try {
     const body = await req.json();
-    if (body.project_id) {
+    const parsed = updateTaskSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+    }
+    const data = parsed.data;
+
+    const existingTask = await prisma.task.findFirst({
+      where: { id, project: { org_id: access.orgId } },
+    });
+    if (!existingTask) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    if (data.project_id) {
       const targetProject = await prisma.project.findFirst({
-        where: { id: body.project_id as string, org_id: access.orgId },
+        where: { id: data.project_id as string, org_id: access.orgId },
       });
       if (!targetProject) return NextResponse.json({ error: 'Target project not found' }, { status: 404 });
     }
 
-    const data: Record<string, unknown> = {};
-    if (body.title !== undefined) data.title = body.title;
-    if (body.description !== undefined) data.description = body.description;
-    if (body.status !== undefined) data.status = body.status;
-    if (body.priority !== undefined) data.priority = body.priority;
-    if (body.due_date !== undefined) data.due_date = body.due_date ? new Date(body.due_date) : null;
-    if (body.project_id !== undefined) data.project_id = body.project_id;
-    if (body.estimated_minutes !== undefined) data.estimated_minutes = body.estimated_minutes;
-    if (body.order_index !== undefined) data.order_index = body.order_index;
+    const updateData: Record<string, unknown> = {};
+    if (data.title !== undefined) updateData.title = data.title;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.status !== undefined) updateData.status = data.status;
+    if (data.priority !== undefined) updateData.priority = data.priority;
+    if (data.due_date !== undefined) updateData.due_date = data.due_date ? new Date(data.due_date) : null;
+    if (data.project_id !== undefined) updateData.project_id = data.project_id;
+    if (data.estimated_minutes !== undefined) updateData.estimated_minutes = data.estimated_minutes;
+    if (data.order_index !== undefined) updateData.order_index = data.order_index;
 
-    const task = await prisma.task.update({ where: { id }, data });
+    const task = await prisma.task.update({ where: { id }, data: updateData });
 
     // Track status changes in activity log
-    if (body.status && body.old_status && body.status !== body.old_status) {
+    if (data.status && data.old_status && data.status !== data.old_status) {
       await prisma.activityLog.create({
-        data: { task_id: id, user_id: userId, action: 'status_change', metadata: { from: body.old_status, to: body.status } },
+        data: { task_id: id, user_id: userId, action: 'status_change', metadata: { from: data.old_status, to: data.status } },
       });
       // Notify assignees
       const assignees = await prisma.taskAssignee.findMany({ where: { task_id: id }, select: { user_id: true } });
@@ -85,29 +114,28 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
             entity_id: id,
             entity_type: 'task',
             title: 'Task status updated',
-            body: `${task.title}: ${body.old_status} → ${body.status}`,
+            body: `${task.title}: ${data.old_status} → ${data.status}`,
           }));
 
         if (notifs.length) {
-          await prisma.notification.createMany({ data: notifs });
-          notifs.forEach((n) => emitToUser(n.user_id, SOCKET_EVENTS.NOTIFICATION_NEW, n));
+          await notifyUsers(notifs);
         }
       }
     }
 
     // Track priority changes
-    if (body.priority && body.old_priority && body.priority !== body.old_priority) {
+    if (data.priority && data.old_priority && data.priority !== data.old_priority) {
       await prisma.activityLog.create({
-        data: { task_id: id, user_id: userId, action: 'priority_update', metadata: { from: body.old_priority, to: body.priority } },
+        data: { task_id: id, user_id: userId, action: 'priority_update', metadata: { from: data.old_priority, to: data.priority } },
       });
     }
 
     // Sync assignees if provided
-    if (body.assignee_ids) {
+    if (data.assignee_ids) {
       const existing = await prisma.taskAssignee.findMany({ where: { task_id: id }, select: { user_id: true } });
       const existingIds = existing.map((e) => e.user_id);
-      const toAdd = (body.assignee_ids as string[]).filter((uid) => !existingIds.includes(uid));
-      const toRemove = existingIds.filter((uid) => !(body.assignee_ids as string[]).includes(uid));
+      const toAdd = (data.assignee_ids as string[]).filter((uid) => !existingIds.includes(uid));
+      const toRemove = existingIds.filter((uid) => !(data.assignee_ids as string[]).includes(uid));
 
       if (toRemove.length) {
         await prisma.taskAssignee.deleteMany({ where: { task_id: id, user_id: { in: toRemove } } });
@@ -122,17 +150,16 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           title: 'You were assigned to a task',
           body: task.title,
         }));
-        await prisma.notification.createMany({ data: notifs });
-        notifs.forEach((n) => emitToUser(n.user_id, SOCKET_EVENTS.NOTIFICATION_NEW, n));
+        await notifyUsers(notifs);
       }
     }
 
     // Sync tags if provided
-    if (body.tag_ids) {
+    if (data.tag_ids) {
       const existing = await prisma.taskTag.findMany({ where: { task_id: id }, select: { tag_id: true } });
       const existingIds = existing.map((e) => e.tag_id);
-      const toAdd = (body.tag_ids as string[]).filter((tid) => !existingIds.includes(tid));
-      const toRemove = existingIds.filter((tid) => !(body.tag_ids as string[]).includes(tid));
+      const toAdd = (data.tag_ids as string[]).filter((tid) => !existingIds.includes(tid));
+      const toRemove = existingIds.filter((tid) => !(data.tag_ids as string[]).includes(tid));
 
       if (toRemove.length) {
         await prisma.taskTag.deleteMany({ where: { task_id: id, tag_id: { in: toRemove } } });
@@ -140,6 +167,60 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       if (toAdd.length) {
         await prisma.taskTag.createMany({ data: toAdd.map((tid) => ({ task_id: id, tag_id: tid })) });
       }
+    }
+
+    // Google Calendar Sync
+    try {
+      const assignees = await prisma.taskAssignee.findMany({ where: { task_id: id }, select: { user_id: true } });
+      const assigneeIds = assignees.map((a) => a.user_id);
+      const targetUserIds = Array.from(new Set([...assigneeIds, userId]));
+
+      const googleAccount = await prisma.account.findFirst({
+        where: {
+          user_id: { in: targetUserIds },
+          provider: 'google',
+          refresh_token: { not: null },
+        },
+        select: { id: true },
+      });
+
+      if (googleAccount) {
+        const accessToken = await getValidAccessToken(googleAccount.id);
+
+        if (existingTask.google_calendar_event_id && !task.due_date) {
+          // Due date removed: Delete calendar event
+          await deleteCalendarEvent(accessToken, existingTask.google_calendar_event_id);
+          await prisma.task.update({ where: { id }, data: { google_calendar_event_id: null } });
+        } else if (existingTask.google_calendar_event_id && task.due_date) {
+          // Due date / title / description updated: Update calendar event
+          const startDate = new Date(task.due_date);
+          const durationMs = (task.estimated_minutes || 60) * 60 * 1000;
+          const endDate = new Date(startDate.getTime() + durationMs);
+
+          await updateCalendarEvent(accessToken, existingTask.google_calendar_event_id, {
+            title: task.title,
+            description: task.description,
+            startDate,
+            endDate,
+          });
+        } else if (!existingTask.google_calendar_event_id && task.due_date) {
+          // Due date added: Create new calendar event
+          const startDate = new Date(task.due_date);
+          const durationMs = (task.estimated_minutes || 60) * 60 * 1000;
+          const endDate = new Date(startDate.getTime() + durationMs);
+
+          const eventId = await createCalendarEvent(accessToken, {
+            title: task.title,
+            description: task.description,
+            startDate,
+            endDate,
+          });
+
+          await prisma.task.update({ where: { id }, data: { google_calendar_event_id: eventId } });
+        }
+      }
+    } catch (err) {
+      console.error('[Google Calendar] Failed to sync event on task PUT:', err);
     }
 
     // Fetch updated task with full relations and broadcast to Org
@@ -184,6 +265,31 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     where: { id, project: { org_id: access.orgId } },
   });
   if (!existingTask) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  // Delete Google Calendar event if present
+  if (existingTask.google_calendar_event_id) {
+    try {
+      const assignees = await prisma.taskAssignee.findMany({ where: { task_id: id }, select: { user_id: true } });
+      const assigneeIds = assignees.map((a) => a.user_id);
+      const targetUserIds = Array.from(new Set([...assigneeIds, access.userId]));
+
+      const googleAccount = await prisma.account.findFirst({
+        where: {
+          user_id: { in: targetUserIds },
+          provider: 'google',
+          refresh_token: { not: null },
+        },
+        select: { id: true },
+      });
+
+      if (googleAccount) {
+        const accessToken = await getValidAccessToken(googleAccount.id);
+        await deleteCalendarEvent(accessToken, existingTask.google_calendar_event_id);
+      }
+    } catch (err) {
+      console.error('[Google Calendar] Failed to delete event on task DELETE:', err);
+    }
+  }
 
   try {
     await prisma.task.delete({ where: { id } });

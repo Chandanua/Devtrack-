@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Settings, User, Save, Loader2 } from 'lucide-react';
+import { User, Save, Loader2, Calendar } from 'lucide-react';
 import { useAuth } from '@/components/providers/auth-provider';
 import { ROLE_LABELS_MAP } from '@/lib/constants';
 import { Card } from '@/components/ui/card';
@@ -18,6 +18,7 @@ export default function SettingsPage() {
   const [fullName, setFullName] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [saving, setSaving] = useState(false);
+  const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (profile) {
@@ -25,6 +26,13 @@ export default function SettingsPage() {
       setJobTitle(profile.job_title ?? '');
     }
   }, [profile]);
+
+  useEffect(() => {
+    fetch('/api/auth/google/status')
+      .then((res) => res.json())
+      .then((data) => setGoogleConnected(data.connected))
+      .catch(() => setGoogleConnected(false));
+  }, []);
 
   async function handleSave() {
     setSaving(true);
@@ -86,6 +94,45 @@ export default function SettingsPage() {
             <Button onClick={handleSave} disabled={saving} className="gap-2">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Save changes
             </Button>
+          </div>
+        </Card>
+
+        {/* Google Calendar Sync Panel */}
+        <Card className="max-w-2xl p-6 mt-6">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-500/10">
+                <Calendar className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <h2 className="font-semibold">Google Calendar</h2>
+                <p className="text-sm text-muted-foreground">Automatic due-date event synchronization</p>
+              </div>
+            </div>
+            {googleConnected !== null && (
+              <Badge variant={googleConnected ? 'default' : 'outline'} className={googleConnected ? 'bg-emerald-600 hover:bg-emerald-600' : 'text-amber-600 border-amber-600/30'}>
+                {googleConnected ? 'Connected' : 'Not connected'}
+              </Badge>
+            )}
+          </div>
+
+          <div className="mt-4 text-xs space-y-3">
+            {googleConnected ? (
+              <p className="text-muted-foreground">
+                Google Calendar: Connected. Tasks created or assigned to you with due dates will automatically sync to your primary calendar.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-amber-600 dark:text-amber-400">
+                  Google Calendar: Not connected — reconnect Google to enable due-date sync
+                </p>
+                <Button asChild size="sm" variant="outline" className="gap-2 border-blue-500/30 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50">
+                  <a href="/api/auth/google">
+                    Connect Google Calendar
+                  </a>
+                </Button>
+              </div>
+            )}
           </div>
         </Card>
 

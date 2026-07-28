@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { signToken, COOKIE_NAME, COOKIE_OPTIONS } from '@/lib/auth/jwt';
 import { exchangeGitHubCode, getGitHubUser, getGitHubEmails, slugify } from '@/lib/auth/oauth';
 import { ORG_COOKIE } from '@/lib/auth/get-org';
+import { encrypt } from '@/lib/crypto';
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
@@ -55,6 +56,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Upsert the Account (link GitHub to this profile)
+    const encryptedToken = encrypt(tokenData.access_token);
     await prisma.account.upsert({
       where: {
         provider_provider_account_id: {
@@ -63,14 +65,14 @@ export async function GET(request: NextRequest) {
         },
       },
       update: {
-        access_token: tokenData.access_token,
+        access_token: encryptedToken,
         avatar_url: ghUser.avatar_url,
       },
       create: {
         user_id: profile.id,
         provider: 'github',
         provider_account_id: String(ghUser.id),
-        access_token: tokenData.access_token,
+        access_token: encryptedToken,
         avatar_url: ghUser.avatar_url,
       },
     });

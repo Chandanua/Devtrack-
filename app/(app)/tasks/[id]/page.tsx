@@ -133,8 +133,11 @@ export default function TaskDetailPage() {
     return () => { leaveTask(taskId); };
   }, [taskId, socket, joinTask, leaveTask, user?.id]);
   useEffect(() => {
-    Promise.all([fetch('/api/projects'), fetch('/api/members'), fetch('/api/tags')]).then(async ([p, m, t]) => {
-      if (p.ok) setProjects(await p.json());
+    Promise.all([fetch('/api/projects?pageSize=100'), fetch('/api/members'), fetch('/api/tags')]).then(async ([p, m, t]) => {
+      if (p.ok) {
+        const pData = await p.json();
+        setProjects(pData.data ?? []);
+      }
       if (m.ok) setMembers(await m.json());
       if (t.ok) setTags(await t.json());
     });
@@ -446,9 +449,21 @@ export default function TaskDetailPage() {
                   <div key={a.id} className="flex items-center gap-3 rounded-lg border p-3">
                     <Paperclip className="h-4 w-4 text-muted-foreground" />
                     <div className="flex-1 min-w-0">
-                      <p className="truncate text-sm font-medium">{a.filename}</p>
+                      <a
+                        href={`/api/tasks/${taskId}/attachments/${a.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate text-sm font-medium hover:underline hover:text-primary block"
+                      >
+                        {a.filename}
+                      </a>
                       <p className="text-xs text-muted-foreground">{formatBytes(a.file_size)}</p>
                     </div>
+                    <Button variant="ghost" size="sm" asChild>
+                      <a href={`/api/tasks/${taskId}/attachments/${a.id}`} download={a.filename}>
+                        Download
+                      </a>
+                    </Button>
                   </div>
                 ))}
               </div>

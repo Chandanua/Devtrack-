@@ -40,21 +40,27 @@ export default function ProjectDetailPage() {
   const fetchData = useCallback(async () => {
     const [pRes, tRes] = await Promise.all([
       fetch(`/api/projects/${projectId}`),
-      fetch(`/api/tasks?projectId=${projectId}&parentOnly=true`),
+      fetch(`/api/tasks?projectId=${projectId}&parentOnly=true&pageSize=100`),
     ]);
     if (pRes.ok) setProject(await pRes.json());
-    if (tRes.ok) setTasks(await tRes.json());
+    if (tRes.ok) {
+      const tData = await tRes.json();
+      setTasks(tData.data ?? []);
+    }
     setLoading(false);
   }, [projectId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => {
-    Promise.all([fetch('/api/members'), fetch('/api/tags'), fetch('/api/teams'), fetch('/api/projects')])
+    Promise.all([fetch('/api/members'), fetch('/api/tags'), fetch('/api/teams'), fetch('/api/projects?pageSize=100')])
       .then(async ([m, t, te, p]) => {
         if (m.ok) setMembers(await m.json());
         if (t.ok) setTags(await t.json());
         if (te.ok) setTeams(await te.json());
-        if (p.ok) setProjects(await p.json());
+        if (p.ok) {
+          const pData = await p.json();
+          setProjects(pData.data ?? []);
+        }
       });
   }, []);
 

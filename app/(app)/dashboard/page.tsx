@@ -25,11 +25,17 @@ export default function DashboardPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [tasksRes, projRes] = await Promise.all([
-      fetch('/api/tasks?parentOnly=true'),
-      fetch('/api/projects'),
+      fetch('/api/tasks?parentOnly=true&pageSize=100'),
+      fetch('/api/projects?pageSize=100'),
     ]);
-    if (tasksRes.ok) setTasks(await tasksRes.json());
-    if (projRes.ok) setProjects(await projRes.json());
+    if (tasksRes.ok) {
+      const data = await tasksRes.json();
+      setTasks(data.data ?? []);
+    }
+    if (projRes.ok) {
+      const data = await projRes.json();
+      setProjects(data.data ?? []);
+    }
     setLoading(false);
   }, []);
 

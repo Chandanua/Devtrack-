@@ -94,20 +94,24 @@ export default function BoardPage() {
   }
 
   const fetchTasks = useCallback(async () => {
-    const res = await fetch('/api/tasks?parentOnly=true');
+    const res = await fetch('/api/tasks?parentOnly=true&pageSize=100');
     if (res.ok) {
       const data = await res.json();
-      setTasks(data);
-      setFilteredTasks(data);
+      const taskList = data.data ?? [];
+      setTasks(taskList);
+      setFilteredTasks(taskList);
     }
     setLoading(false);
   }, []);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
   useEffect(() => {
-    Promise.all([fetch('/api/projects'), fetch('/api/members'), fetch('/api/tags')])
+    Promise.all([fetch('/api/projects?pageSize=100'), fetch('/api/members'), fetch('/api/tags')])
       .then(async ([p, m, t]) => {
-        if (p.ok) setProjects(await p.json());
+        if (p.ok) {
+          const pData = await p.json();
+          setProjects(pData.data ?? []);
+        }
         if (m.ok) setMembers(await m.json());
         if (t.ok) setTags(await t.json());
       });

@@ -27,11 +27,14 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
   const loadQuickData = async () => {
     try {
       const [p, m, t] = await Promise.all([
-        fetch('/api/projects'),
+        fetch('/api/projects?pageSize=100'),
         fetch('/api/members'),
         fetch('/api/tags'),
       ]);
-      if (p.ok) setProjects(await p.json());
+      if (p.ok) {
+        const pData = await p.json();
+        setProjects(pData.data ?? []);
+      }
       if (m.ok) setMembers(await m.json());
       if (t.ok) setTags(await t.json());
     } catch { /* ignore */ }

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { signToken, COOKIE_NAME, COOKIE_OPTIONS } from '@/lib/auth/jwt';
 import { exchangeGoogleCode, getGoogleUser, slugify } from '@/lib/auth/oauth';
 import { ORG_COOKIE } from '@/lib/auth/get-org';
+import { encrypt } from '@/lib/crypto';
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
@@ -43,6 +44,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Upsert the Account
+    const encryptedAccessToken = encrypt(tokenData.access_token);
+    const encryptedRefreshToken = tokenData.refresh_token ? encrypt(tokenData.refresh_token) : undefined;
+
     await prisma.account.upsert({
       where: {
         provider_provider_account_id: {
@@ -51,14 +55,16 @@ export async function GET(request: NextRequest) {
         },
       },
       update: {
-        access_token: tokenData.access_token,
+        access_token: encryptedAccessToken,
+        ...(encryptedRefreshToken ? { refresh_token: encryptedRefreshToken } : {}),
         avatar_url: gUser.picture,
       },
       create: {
         user_id: profile.id,
         provider: 'google',
         provider_account_id: gUser.id,
-        access_token: tokenData.access_token,
+        access_token: encryptedAccessToken,
+        refresh_token: encryptedRefreshToken || null,
         avatar_url: gUser.picture,
       },
     });

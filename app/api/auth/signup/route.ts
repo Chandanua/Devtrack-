@@ -4,11 +4,26 @@ import { hashPassword } from '@/lib/auth/password';
 import { signToken, COOKIE_NAME, COOKIE_OPTIONS } from '@/lib/auth/jwt';
 import { slugify } from '@/lib/auth/oauth';
 import { ORG_COOKIE } from '@/lib/auth/get-org';
+import { getClientIp, checkRateLimit } from '@/lib/auth/rate-limit';
 import type { UserRole } from '@prisma/client';
 
 const ALLOWED_ROLES: UserRole[] = ['developer', 'qa_tester', 'designer', 'team_lead', 'project_manager'];
 
 export async function POST(request: Request) {
+  const ip = getClientIp(request);
+  const rateLimit = checkRateLimit(ip, 5, 60);
+  if (!rateLimit.success) {
+    return NextResponse.json(
+      { error: 'Too many signup attempts. Please try again later.' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(rateLimit.retryAfter),
+        },
+      }
+    );
+  }
+
   try {
     const { email, password, full_name, role } = await request.json();
 
