@@ -9,29 +9,4 @@ services:
       - '3000:3000'
     env_file:
       - .env
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: unless-stopped
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: devtrack-postgres
-    restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: devtrack
-    ports:
-      - '5432:5432'
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d devtrack"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  postgres_data:
-    name: devtrack_postgres_data
